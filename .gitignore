@@ -1,0 +1,25 @@
+# Bench data is distributed via HuggingFace
+# (`huggingface-cli download WeihangSu/SRA-Bench --repo-type dataset --local-dir data/bench`).
+data/bench/
+data/external/
+
+# Experiment outputs
+results/
+
+# Environment
+.venv/
+.uv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/

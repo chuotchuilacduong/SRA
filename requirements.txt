@@ -1,0 +1,111 @@
+# SR-Agents + LinearRAG integration
+# Python 3.11 (tested), requires >=3.10,<3.13
+#
+# Install:
+#   pip install -r requirements.txt
+#
+# Spacy model (must install separately after pip):
+#   python -m spacy download en_core_web_sm
+#   # GPU/higher-accuracy alternative:
+#   # python -m spacy download en_core_web_trf  (requires spacy-transformers)
+
+# ---------------------------------------------------------------------------
+# Core SR-Agents deps (from pyproject.toml)
+# ---------------------------------------------------------------------------
+pyyaml>=6.0
+tqdm>=4.67.0
+requests>=2.32.0
+pandas>=2.2.0
+scipy>=1.14.0
+openai>=1.50.0
+sympy>=1.12
+latex2sympy2>=1.0.0
+torch>=2.4.0
+transformers>=4.45.0
+networkx>=3.0
+sentence-transformers>=3.0.0
+accelerate>=1.0.0
+tree-sitter>=0.22.0
+tree-sitter-python>=0.21.0
+
+# ---------------------------------------------------------------------------
+# LinearRAG integration — packages added beyond pyproject.toml
+# ---------------------------------------------------------------------------
+
+# Graph engine for Personalized PageRank
+python-igraph>=0.11.0
+
+# NER pipeline (sentence splitting + entity extraction)
+spacy>=3.6.0,<3.8
+
+# numpy <2.0 required: spacy 3.6 was compiled against numpy 1.x ABI.
+# Upgrading numpy to 2.x breaks spacy with "numpy.dtype size changed" error.
+numpy>=1.24.0,<2.0.0
+
+# Parquet-based embedding cache (EmbeddingStore)
+pyarrow>=12.0.0
+
+# .env file loading for TIMELY_API_KEY / OPENAI_API_KEY
+python-dotenv>=1.0.0
+
+# Async HTTP for TimelyClient.call_api_async (optional, sync path works without)
+aiohttp>=3.9.0
+
+# ---------------------------------------------------------------------------
+# BigCodeBench execution sandbox deps (from pyproject.toml)
+# ---------------------------------------------------------------------------
+beautifulsoup4
+blake3
+chardet
+cryptography
+django
+dnspython
+docxtpl
+faker
+flask
+flask-login
+flask-restful
+flask-wtf
+flask-mail
+folium
+gensim
+geopandas
+geopy
+holidays
+levenshtein
+lxml
+matplotlib
+mechanize
+natsort
+nltk
+opencv-python-headless
+openpyxl
+pillow
+prettytable
+psutil
+pycryptodome
+pyfakefs
+pyquery
+pytest
+python-http-client
+python-dateutil
+python-docx
+pytz
+requests-mock
+rsa
+scikit-image
+scikit-learn
+seaborn
+sendgrid
+shapely
+statsmodels
+textblob
+texttable
+werkzeug
+wikipedia
+wordcloud
+wordninja
+wtforms
+xlrd
+xlwt
+xmltodict
