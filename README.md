@@ -46,7 +46,7 @@ conda activate linearag311
 ### 2b. Cài dependencies
 
 ```bash
-cd /path/to/LinearRAG/SR-Agents
+cd SRA/
 
 pip install -r requirements.txt
 
@@ -144,32 +144,37 @@ OPENAI_API_KEY=sk-...
 
 Dùng cho máy RAM ≤ 8 GB hoặc khi muốn kiểm tra nhanh. Tự động giới hạn **1,000 skills** và **1,000 queries**.
 
-### Bước 1 — Retrieval
+### Bước 1 — Retrieval (Test Mode - 1000 skills)
+
+**Chạy TẤT CẢ 6 datasets:**
 
 ```bash
 conda activate linearag311
 cd /path/to/LinearRAG/SR-Agents
 
-bash run_retrieve_linearrag_test.sh
+bash run_retrieve_linearrag_test_all.sh
 ```
 
-Mặc định chạy dataset `theoremqa`. Tuỳ chỉnh:
+**Chạy một số datasets cụ thể:**
 
 ```bash
-# Dataset khác
-bash run_retrieve_linearrag_test.sh champ
+bash run_retrieve_linearrag_test_all.sh champ theoremqa logicbench
+```
 
-# Nhiều datasets
-bash run_retrieve_linearrag_test.sh champ logicbench
+**Tùy chỉnh RAM:**
 
-# Custom size
-SUBSET_SIZE=500 MAX_INSTANCES=500 bash run_retrieve_linearrag_test.sh
+```bash
+# Giảm corpus xuống 500 skills
+SUBSET_SIZE=500 MAX_INSTANCES=500 bash run_retrieve_linearrag_test_all.sh
+
+# Giảm batch size nếu vẫn bị OOM
+BATCH_SIZE=8 MAX_WORKERS=1 bash run_retrieve_linearrag_test_all.sh
 ```
 
 Output lưu tại: `results/retrieval_test/{dataset}-linearrag-1000.json`
 
 > **Lần đầu:** mất ~5–15 phút (NER + embedding 1k skills).
-> **Lần sau:** dùng lại cache, xong trong vài giây.
+> **Lần sau:** dùng lại cache, xong trong vài phút/dataset.
 
 ---
 
@@ -217,14 +222,26 @@ Dùng cho máy RAM ≥ 16 GB. Chạy toàn bộ 26,262 skills × 6 datasets.
 
 ### Bước 1 — Retrieval (tất cả 6 datasets)
 
+**Chạy TẤT CẢ 6 datasets:**
+
 ```bash
-bash run_retrieve_linearrag.sh
+bash run_retrieve_linearrag_all.sh
 ```
 
-Hoặc từng dataset:
+**Chạy một số datasets cụ thể:**
 
 ```bash
-bash run_retrieve_linearrag.sh champ theoremqa logicbench
+bash run_retrieve_linearrag_all.sh champ theoremqa logicbench
+```
+
+**Tùy chỉnh performance:**
+
+```bash
+# Giảm batch size & workers nếu bị OOM
+BATCH_SIZE=16 MAX_WORKERS=1 bash run_retrieve_linearrag_all.sh
+
+# Truncate passages dài
+MAX_CHARS=3000 bash run_retrieve_linearrag_all.sh
 ```
 
 > **Thời gian:** Dataset đầu tiên mất **30–90 phút** (NER toàn corpus). Các dataset sau dùng cache NER, chỉ mất **2–5 phút/dataset**.
