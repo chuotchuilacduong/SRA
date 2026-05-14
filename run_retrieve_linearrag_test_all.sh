@@ -9,6 +9,9 @@
 
 set -euo pipefail
 
+# Enable Metal GPU acceleration on macOS (Apple Silicon)
+export PYTORCH_ENABLE_MPS_FALLBACK=1
+
 CORPUS_FULL="data/bench/corpus/corpus.json"
 INSTANCES_DIR="data/bench/instances"
 OUTPUT_DIR="results/retrieval_test"
@@ -18,7 +21,7 @@ TOP_K=50
 SUBSET_SIZE="${SUBSET_SIZE:-1000}"
 MAX_INSTANCES="${MAX_INSTANCES:-1000}"
 BATCH_SIZE="${BATCH_SIZE:-16}"
-MAX_WORKERS="${MAX_WORKERS:-1}"
+MAX_WORKERS="${MAX_WORKERS:-1}"  # macOS: use 1 to avoid semaphore leaks
 MAX_CHARS="${MAX_CHARS:-4000}"
 
 CORPUS_SMALL="data/bench/corpus/corpus_${SUBSET_SIZE}.json"

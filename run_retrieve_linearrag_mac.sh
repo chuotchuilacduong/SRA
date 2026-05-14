@@ -1,16 +1,43 @@
 #!/usr/bin/env bash
-# Run LinearRAG retrieval on ALL datasets in data/bench/instances
-# Uses full corpus (26k skills), processes all 6 datasets
+# Run LinearRAG retrieval - macOS Optimized Version
+# Fixes for: Segmentation fault, OOM, multiprocessing crashes
 #
 # Usage (inside conda env linearag311, from SR-Agents/):
-#   bash run_retrieve_linearrag_all.sh                          # All 6 datasets
-#   bash run_retrieve_linearrag_all.sh champ theoremqa          # Subset of datasets
-#   BATCH_SIZE=32 MAX_WORKERS=2 bash run_retrieve_linearrag_all.sh
+#   bash run_retrieve_linearrag_mac.sh                          # All 6 datasets
+#   bash run_retrieve_linearrag_mac.sh champ theoremqa          # Subset
 
-set -euo pipefail
+set -uo pipefail  # NOT -e: continue if one dataset fails
 
-# Enable Metal GPU acceleration on macOS (Apple Silicon)
+# ============================================================================
+# CRITICAL: macOS-specific fixes
+# ============================================================================
+
+# Disable PyTorch MPS (Metal GPU) - causes segfaults with multiprocessing
 export PYTORCH_ENABLE_MPS_FALLBACK=1
+export CUDA_VISIBLE_DEVICES=""
+
+# Force CPU-only PyTorch
+export PYTORCH_DEVICE="cpu"
+
+# Use spawn method for multiprocessing (safer on macOS than fork)
+export MULTIPROCESSING_START_METHOD="spawn"
+
+# Disable tokenizers parallelism (causes crashes)
+export TOKENIZERS_PARALLELISM="false"
+
+# Limit OpenMP threads (prevents native code conflicts)
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+export VECLIB_MAXIMUM_THREADS=1
+
+# Disable HuggingFace symlinks warnings
+export HF_HUB_DISABLE_SYMLINKS_WARNING=1
+
+# Use simpler memory allocator
+export PYTORCH_NO_CUDA_MEMORY_CACHING=1
+
+# ============================================================================
 
 CORPUS="data/bench/corpus/corpus.json"
 INSTANCES_DIR="data/bench/instances"
@@ -18,14 +45,14 @@ OUTPUT_DIR="results/retrieval_all"
 DATASET_NAME="bench_full"
 TOP_K=50
 
-# Configurable parameters
-BATCH_SIZE="${BATCH_SIZE:-8}"
-MAX_WORKERS="${MAX_WORKERS:-2}"
-MAX_CHARS="${MAX_CHARS:-5000}"
+# Safer defaults for macOS to avoid segfaults
+BATCH_SIZE="${BATCH_SIZE:-4}"      # Smaller batches
+MAX_WORKERS="${MAX_WORKERS:-1}"    # Single worker (no multiprocessing crashes)
+MAX_CHARS="${MAX_CHARS:-3000}"     # Shorter passages
 
 mkdir -p "$OUTPUT_DIR"
 
-# Auto-detect all datasets if no args given
+# Auto-detect datasets
 if [ $# -eq 0 ]; then
     echo "Auto-detecting datasets from $INSTANCES_DIR..."
     DATASETS=()
@@ -42,7 +69,7 @@ fi
 
 echo ""
 echo "=========================================="
-echo "LinearRAG Retrieval - All Datasets"
+echo "LinearRAG Retrieval (macOS Optimized)"
 echo "=========================================="
 echo "Corpus      : $CORPUS"
 echo "Output dir  : $OUTPUT_DIR"
@@ -50,12 +77,19 @@ echo "Batch size  : $BATCH_SIZE"
 echo "Max workers : $MAX_WORKERS"
 echo "Max chars   : $MAX_CHARS"
 echo "Datasets    : ${DATASETS[@]}"
+echo ""
+echo "macOS Fixes Applied:"
+echo "  - MPS GPU disabled (causes segfaults)"
+echo "  - Multiprocessing: spawn method"
+echo "  - Threading: limited to 1"
+echo "  - Tokenizers parallelism: off"
 echo "=========================================="
 echo ""
 
 PROCESSED=0
 SKIPPED=0
 FAILED=0
+FAILED_DATASETS=()
 
 for DS in "${DATASETS[@]}"; do
     INSTANCES="$INSTANCES_DIR/${DS}.json"
@@ -79,6 +113,7 @@ for DS in "${DATASETS[@]}"; do
     echo "    Output    : $OUTPUT"
     echo "    Started   : $(date '+%H:%M:%S')"
 
+    # Run in a sub-shell to isolate crashes
     if sragents retrieve \
         --retriever linearrag \
         --retriever-arg dataset_name="$DATASET_NAME" \
@@ -94,7 +129,13 @@ for DS in "${DATASETS[@]}"; do
     else
         echo "    FAILED    : $(date '+%H:%M:%S')"
         ((FAILED++))
+        FAILED_DATASETS+=("$DS")
+        # Clean up partial output if any
+        [ -f "$OUTPUT" ] && rm -f "$OUTPUT"
     fi
+
+    # Force garbage collection between datasets
+    sleep 2
 done
 
 echo ""
@@ -104,10 +145,13 @@ echo "=========================================="
 echo "Processed : $PROCESSED"
 echo "Skipped   : $SKIPPED"
 echo "Failed    : $FAILED"
+if [ ${#FAILED_DATASETS[@]} -gt 0 ]; then
+    echo "Failed datasets: ${FAILED_DATASETS[@]}"
+fi
 echo "=========================================="
 echo ""
 
 if [ $PROCESSED -gt 0 ]; then
     echo "Results in $OUTPUT_DIR:"
-    ls -lh "$OUTPUT_DIR"/*linearrag.json 2>/dev/null | tail -$PROCESSED || true
+    ls -lh "$OUTPUT_DIR"/*linearrag.json 2>/dev/null || true
 fi

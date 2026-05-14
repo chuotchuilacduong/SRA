@@ -100,7 +100,7 @@ Nếu có đủ RAM & CPU:
 
 ```bash
 # Parallel processing
-MAX_WORKERS=4 BATCH_SIZE=64 bash run_retrieve_linearrag_all.sh
+MAX_WORKERS=4 BATCH_SIZE=32 bash run_retrieve_linearrag_all.sh
 ```
 
 ---

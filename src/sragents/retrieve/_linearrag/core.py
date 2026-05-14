@@ -519,19 +519,30 @@ class LinearRAG:
         return seed_entity_indices, seed_entity_texts, seed_entity_hash_ids, seed_entity_scores
 
     def index(self, passages):
+        print("[index] Start", flush=True)
         self.node_to_node_stats = defaultdict(dict)
         self.entity_to_sentence_stats = defaultdict(dict)
+        print("[index] passage insert_text...", flush=True)
         self.passage_embedding_store.insert_text(passages)
+        print("[index] passage done", flush=True)
         hash_id_to_passage = self.passage_embedding_store.get_hash_id_to_text()
+        print(f"[index] hash_id_to_passage: {len(hash_id_to_passage)}", flush=True)
         existing_passage_hash_id_to_entities,existing_sentence_to_entities, new_passage_hash_ids = self.load_existing_data(hash_id_to_passage.keys())
+        print(f"[index] new passages to NER: {len(new_passage_hash_ids)}", flush=True)
         if len(new_passage_hash_ids) > 0:
             new_hash_id_to_passage = {k : hash_id_to_passage[k] for k in new_passage_hash_ids}
             new_passage_hash_id_to_entities,new_sentence_to_entities = self.spacy_ner.batch_ner(new_hash_id_to_passage, self.config.max_workers)
             self.merge_ner_results(existing_passage_hash_id_to_entities, existing_sentence_to_entities, new_passage_hash_id_to_entities, new_sentence_to_entities)
+        print("[index] save NER...", flush=True)
         self.save_ner_results(existing_passage_hash_id_to_entities, existing_sentence_to_entities)
+        print("[index] extract nodes/edges...", flush=True)
         entity_nodes, sentence_nodes,passage_hash_id_to_entities,self.entity_to_sentence,self.sentence_to_entity = self.extract_nodes_and_edges(existing_passage_hash_id_to_entities, existing_sentence_to_entities)
+        print(f"[index] entities={len(entity_nodes)}, sentences={len(sentence_nodes)}", flush=True)
+        print("[index] sentence insert_text...", flush=True)
         self.sentence_embedding_store.insert_text(list(sentence_nodes))
+        print("[index] entity insert_text...", flush=True)
         self.entity_embedding_store.insert_text(list(entity_nodes))
+        print("[index] insert_text all done", flush=True)
         self.entity_hash_id_to_sentence_hash_ids = {}
         for entity, sentence in self.entity_to_sentence.items():
             entity_hash_id = self.entity_embedding_store.text_to_hash_id[entity]
@@ -540,13 +551,26 @@ class LinearRAG:
         for sentence, entities in self.sentence_to_entity.items():
             sentence_hash_id = self.sentence_embedding_store.text_to_hash_id[sentence]
             self.sentence_hash_id_to_entity_hash_ids[sentence_hash_id] = [self.entity_embedding_store.text_to_hash_id[e] for e in entities]
+        print("[index] add entity-passage edges...", flush=True)
         self.add_entity_to_passage_edges(passage_hash_id_to_entities)
         if getattr(self.config, "enable_passage_adjacency", False):
             self.add_adjacent_passage_edges()
+        print("[index] augment_graph...", flush=True)
         self.augment_graph()
+        print("[index] write graphml...", flush=True)
         output_graphml_path = os.path.join(self.config.working_dir,self.dataset_name, "LinearRAG.graphml")
         os.makedirs(os.path.dirname(output_graphml_path), exist_ok=True)
-        self.graph.write_graphml(output_graphml_path)
+        try:
+            self.graph.write_graphml(output_graphml_path)
+        except Exception as e:
+            # GraphML can't handle some control chars; sanitize and retry
+            print(f"[index] graphml write failed ({e}); sanitizing content...", flush=True)
+            _CTRL_RE = re.compile(r'[\x00-\x08\x0B\x0C\x0E-\x1F]')
+            for v in self.graph.vs:
+                if 'content' in v.attributes() and isinstance(v['content'], str):
+                    v['content'] = _CTRL_RE.sub('', v['content'])
+            self.graph.write_graphml(output_graphml_path)
+        print("[index] DONE", flush=True)
 
     def add_adjacent_passage_edges(self):
         """Add edges passage_i ↔ passage_{i+1} (weight=1.0) by input idx order.

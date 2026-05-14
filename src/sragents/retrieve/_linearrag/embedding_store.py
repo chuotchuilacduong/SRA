@@ -36,14 +36,16 @@ class EmbeddingStore:
         nodes_dict = {}
         for text in text_list:
             nodes_dict[compute_mdhash_id(text, prefix=self.namespace + "-")] = {'content': text}
-        
+
         all_hash_ids = list(nodes_dict.keys())
-        
+
         existing = set(self.hash_ids)
-        missing_ids = [h for h in all_hash_ids if h not in existing]      
+        missing_ids = [h for h in all_hash_ids if h not in existing]
         texts_to_encode = [nodes_dict[hash_id]["content"] for hash_id in missing_ids]
+        if not texts_to_encode:
+            return
         all_embeddings = self.embedding_model.encode(texts_to_encode,normalize_embeddings=True, show_progress_bar=False,batch_size=self.batch_size)
-        
+
         self._upsert(missing_ids, texts_to_encode, all_embeddings)
 
     def _upsert(self, hash_ids, texts, embeddings):

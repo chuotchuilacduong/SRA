@@ -15,7 +15,7 @@ set -euo pipefail
 
 CORPUS="data/bench/corpus/corpus.json"
 INSTANCES_DIR="data/bench/instances"
-OUTPUT_DIR="results/retrieval"
+OUTPUT_DIR="data/bench/results/retrieval"
 DATASET_NAME="bench_full"   # shared NER cache key across all datasets
 TOP_K=50
 
@@ -51,7 +51,7 @@ for DS in "${DATASETS[@]}"; do
         --retriever-arg dataset_name="$DATASET_NAME" \
         --retriever-arg max_chars_per_passage=10000 \
         --retriever-arg batch_size=64 \
-        --retriever-arg max_workers=4 \
+        --retriever-arg max_workers=1 \
         --corpus "$CORPUS" \
         --instances "$INSTANCES" \
         --output "$OUTPUT" \

@@ -4,7 +4,8 @@ from collections import defaultdict
 
 class SpacyNER:
     def __init__(self,spacy_model):
-        self.spacy_model = spacy.load(spacy_model)
+        self.spacy_model = spacy.load(spacy_model, disable=["parser", "lemmatizer", "attribute_ruler", "tagger"])
+        self.spacy_model.add_pipe("sentencizer", first=True)
 
     def batch_ner(self, hash_id_to_passage, max_workers):
         passage_list = list(hash_id_to_passage.values())

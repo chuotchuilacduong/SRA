@@ -27,7 +27,9 @@ sentence-transformers>=3.0.0
 accelerate>=1.0.0
 tree-sitter>=0.22.0
 tree-sitter-python>=0.21.0
-
+transformers==4.46.3
+tokenizers>=0.20,<0.21
+huggingface-hub>=0.26.0
 # ---------------------------------------------------------------------------
 # LinearRAG integration — packages added beyond pyproject.toml
 # ---------------------------------------------------------------------------

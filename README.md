@@ -440,3 +440,19 @@ vllm serve Qwen/Qwen3-8B-Instruct --max-model-len 4096 --gpu-memory-utilization 
 - **Stage 1:** chạy lại cùng lệnh — NER cache được giữ, chỉ build lại graph
 - **Stage 2:** chạy lại cùng `--output` — các instance đã done được bỏ qua tự động
 - **Stage 3:** thêm `--force` để ghi đè kết quả cũ
+
+```
+Check gpu Mac:
+/Users/hiro/miniconda3/envs/linearag311/bin/python3 << 'PY'
+import torch
+print(f"PyTorch version: {torch.__version__}")
+print(f"Metal available: {torch.backends.mps.is_available()}")
+print(f"Metal built: {torch.backends.mps.is_built()}")
+
+device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+print(f"Using device: {device}")
+PY
+
+-----
+chmod +x /Users/hiro/Documents/Vinuni/code/SRA/check_gpu.sh && bash /Users/hiro/Documents/Vinuni/code/SRA/check_gpu.sh
+```
