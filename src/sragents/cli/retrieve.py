@@ -48,6 +48,9 @@ def _build_query(instance: dict) -> str:
 
 
 def run(args) -> None:
+    from sragents.retrieve import _load_linearrag  # noqa: PLC0415
+    _load_linearrag()  # load spacy-dependent linearrag only when actually retrieving
+
     require_exists(args.corpus, "corpus")
     require_exists(args.instances, "instances")
 

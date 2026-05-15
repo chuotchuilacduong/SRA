@@ -3,7 +3,6 @@
 from pathlib import Path
 
 from sragents.cli._common import require_exists
-from sragents.retrieve.hybrid import round_robin_merge
 
 
 def add_parser(subparsers) -> None:
@@ -25,6 +24,8 @@ def add_parser(subparsers) -> None:
 
 
 def run(args) -> None:
+    from sragents.retrieve.hybrid import round_robin_merge  # noqa: PLC0415
+
     file_a, file_b = args.input
     require_exists(file_a, "input[0]")
     require_exists(file_b, "input[1]")

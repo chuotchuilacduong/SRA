@@ -12,9 +12,6 @@ from sragents.cli._common import require_exists
 from sragents.corpus import load_corpus_dict
 from sragents.llm import create_llm_client, get_extra_body
 from sragents.prompts import build_prompt
-from sragents.retrieve import compute_retrieval_metrics
-from sragents.retrieve.llm_rerank import LLMReranker
-from sragents.retrieve.schema import RetrievalRecord, RetrievalResults
 
 
 def add_parser(subparsers) -> None:
@@ -41,6 +38,10 @@ def add_parser(subparsers) -> None:
 
 
 def run(args) -> None:
+    from sragents.retrieve import compute_retrieval_metrics  # noqa: PLC0415
+    from sragents.retrieve.llm_rerank import LLMReranker  # noqa: PLC0415
+    from sragents.retrieve.schema import RetrievalRecord, RetrievalResults  # noqa: PLC0415
+
     require_exists(args.input, "input")
     require_exists(args.instances, "instances")
     if args.corpus is not None:

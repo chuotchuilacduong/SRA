@@ -21,4 +21,5 @@ from sragents.infer.engines import (  # noqa: F401
     direct,
     progressive_disclosure,
     react,  # registers both `react` and `react_progressive_disclosure`
+    sar_gated,
 )
