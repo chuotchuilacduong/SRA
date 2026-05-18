@@ -25,3 +25,14 @@ dist/
 .vscode/
 data/
 import/
+src/sragents/retrieve/_linearrag/bfs_search.py
+src/sragents/retrieve/bfsrag.py
+src/sragents/retrieve/cross_rerank.py
+BFSRAG_analysis.md
+new_method.md
+run_rrf_complementary.py
+test_rrf_bfsrag_query.py
+run_bfsrag_benchmark.py
+run_bfsrag_benchmark_full.py
+prune_outliers.py
+.env

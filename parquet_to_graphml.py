@@ -8,13 +8,23 @@ Usage:
 
 import argparse
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
 
 import igraph as ig
 import pandas as pd
 
-DATA_DIR = Path("/home/admin1/SRA/import/bench_1000")
+# XML 1.0 forbids most ASCII control characters. Strip them before writing.
+_CTRL_RE = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F]")
+
+
+def _sanitize(text: str) -> str:
+    if not isinstance(text, str):
+        return text
+    return _CTRL_RE.sub("", text)
+
+DATA_DIR = Path("../bench_full")
 
 
 def build_trigraph(data_dir: Path) -> ig.Graph:
@@ -80,7 +90,9 @@ def build_trigraph(data_dir: Path) -> ig.Graph:
     g = ig.Graph(n=len(node_ids), directed=False)
     g.vs["name"]  = node_ids
     g.vs["type"]  = [nodes[nid]["type"]  for nid in node_ids]
-    g.vs["text"]  = [nodes[nid]["text"]  for nid in node_ids]
+    # Sanitize text: GraphML/XML 1.0 forbids most ASCII control chars
+    # (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F). Strip them to avoid write errors.
+    g.vs["text"]  = [_sanitize(nodes[nid]["text"]) for nid in node_ids]
 
     edge_list   = [(node_idx[s], node_idx[d]) for s, d, _ in edges]
     edge_types  = [t for _, _, t in edges]
@@ -98,7 +110,7 @@ def build_trigraph(data_dir: Path) -> ig.Graph:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", default="/home/admin1/SRA/import/bench_1000/trigraph.graphml")
+    parser.add_argument("--out", default="../bench_full/trigraph.graphml")
     parser.add_argument("--data-dir", default=str(DATA_DIR))
     args = parser.parse_args()
 
