@@ -21,13 +21,20 @@ import importlib
 import sys
 
 from sragents.cli import (
+    bench_latency as _bench_latency,
+    build_pool as _build_pool,
     evaluate as _evaluate,
     experiment as _experiment,
     hybrid as _hybrid,
     infer as _infer,
     listing as _listing,
+    make_splits as _make_splits,
+    mine_negatives as _mine_negatives,
+    probe as _probe,
     rerank as _rerank,
+    rerank_topk as _rerank_topk,
     retrieve as _retrieve,
+    train_rerank as _train_rerank,
 )
 
 _ENTRY_POINT_GROUPS = [
@@ -91,6 +98,14 @@ def main(argv: list[str] | None = None) -> None:
     _evaluate.add_parser(sub)
     _experiment.add_parser(sub)
     _listing.add_parser(sub)
+    # Cross-encoder reranking track
+    _build_pool.add_parser(sub)
+    _mine_negatives.add_parser(sub)
+    _make_splits.add_parser(sub)
+    _train_rerank.add_parser(sub)
+    _rerank_topk.add_parser(sub)
+    _bench_latency.add_parser(sub)
+    _probe.add_parser(sub)
 
     args = parser.parse_args(argv)
     args.func(args)

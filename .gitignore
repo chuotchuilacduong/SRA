@@ -36,3 +36,7 @@ run_bfsrag_benchmark.py
 run_bfsrag_benchmark_full.py
 prune_outliers.py
 .env
+/tests/
+.pytest_cache
+.claude/
+experiments/
