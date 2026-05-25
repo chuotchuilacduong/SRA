@@ -13,6 +13,7 @@ directly::
 """
 
 import time
+from pathlib import Path
 
 import numpy as np
 
@@ -27,10 +28,12 @@ class DenseRetriever:
         model_name_or_path: str,
         query_prefix: str = "",
         batch_size: int = 256,
+        cache_dir: str | None = None,
     ):
         self._model_path = model_name_or_path
         self._query_prefix = query_prefix
         self._batch_size = batch_size
+        self._cache_dir = Path(cache_dir) if cache_dir else None
         self._model = None
 
     def _load_model(self):
@@ -39,14 +42,27 @@ class DenseRetriever:
             print(f"  Loading model: {self._model_path}")
             self._model = SentenceTransformer(self._model_path)
 
+    def _emb_cache_path(self, n_docs: int) -> Path | None:
+        if self._cache_dir is None:
+            return None
+        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        slug = self._model_path.replace("/", "_")
+        return self._cache_dir / f"dense_{slug}_n{n_docs}.npy"
+
     def build_index(self, corpus_ids: list[str], corpus_texts: list[str]) -> None:
-        """Encode the corpus once. ``query_prefix`` is **not** applied to
-        documents — it is a model-side convention only applied at query
-        time (see :meth:`retrieve`)."""
+        """Encode the corpus once and cache embeddings to ``cache_dir``."""
         self._corpus_ids = corpus_ids
+
+        cache_path = self._emb_cache_path(len(corpus_texts))
+        if cache_path is not None and cache_path.exists():
+            print(f"  Loading cached corpus embeddings ({cache_path.name})...")
+            self._corpus_emb = np.load(cache_path)
+            print(f"  Loaded: {self._corpus_emb.shape}")
+            return
+
         self._load_model()
 
-        print(f"  Encoding corpus ({len(corpus_texts)} docs)...", end=" ", flush=True)
+        print(f"  Encoding corpus ({len(corpus_texts)} docs)...", flush=True)
         t0 = time.time()
         self._corpus_emb = self._model.encode(
             corpus_texts,
@@ -54,7 +70,11 @@ class DenseRetriever:
             show_progress_bar=True,
             normalize_embeddings=True,
         )
-        print(f"{time.time() - t0:.1f}s")
+        print(f"  Encoded in {time.time() - t0:.1f}s")
+
+        if cache_path is not None:
+            np.save(cache_path, self._corpus_emb)
+            print(f"  Cached to {cache_path}")
 
     def retrieve(
         self, queries: list[str], top_k: int = 10
@@ -94,11 +114,13 @@ class DenseRetriever:
 def _bge_factory(
     model_path: str = "BAAI/bge-base-en-v1.5",
     batch_size: int = 256,
+    cache_dir: str | None = None,
 ) -> DenseRetriever:
     return DenseRetriever(
         model_name_or_path=model_path,
         query_prefix="Represent this sentence for searching relevant passages: ",
         batch_size=batch_size,
+        cache_dir=cache_dir,
     )
 
 
@@ -106,9 +128,11 @@ def _bge_factory(
 def _contriever_factory(
     model_path: str = "facebook/contriever-msmarco",
     batch_size: int = 256,
+    cache_dir: str | None = None,
 ) -> DenseRetriever:
     return DenseRetriever(
         model_name_or_path=model_path,
         query_prefix="",
         batch_size=batch_size,
+        cache_dir=cache_dir,
     )

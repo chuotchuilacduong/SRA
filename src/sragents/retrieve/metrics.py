@@ -2,7 +2,7 @@
 
 import numpy as np
 
-_MAX_K = 50
+_MAX_K = 100
 _LOG2_DISCOUNT = 1.0 / np.log2(np.arange(2, _MAX_K + 2))  # index 0 → rank 1
 
 
@@ -10,12 +10,12 @@ def compute_retrieval_metrics(
     results: list[dict],
     top_k: int = 10,
 ) -> dict[str, float]:
-    """Compute Recall@K and nDCG@K for K ∈ {1, 5, 10, 50} (bounded by ``top_k``).
+    """Compute Recall@K and nDCG@K for K ∈ {1, 5, 10, 50, 100} (bounded by ``top_k``).
 
     Each ``results`` entry must have ``gold_skill_ids`` and ``retrieved``
     (a list of ``{skill_id, score}`` dicts).
     """
-    ks = [k for k in (1, 5, 10, 50) if k <= top_k]
+    ks = [k for k in (1, 5, 10, 50, 100) if k <= top_k]
     recalls = {k: [] for k in ks}
     ndcgs = {k: [] for k in ks}
 

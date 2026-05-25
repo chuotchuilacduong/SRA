@@ -21,13 +21,18 @@ import importlib
 import sys
 
 from sragents.cli import (
+    cross_encoder_rerank as _cross_encoder_rerank,
     evaluate as _evaluate,
     experiment as _experiment,
+    gold_kmeans_rerank as _gold_kmeans_rerank,
     hybrid as _hybrid,
     infer as _infer,
+    kmeans_rerank as _kmeans_rerank,
     listing as _listing,
     rerank as _rerank,
     retrieve as _retrieve,
+    rrf as _rrf,
+    train_rocketqav2 as _train_rocketqav2,
 )
 
 _ENTRY_POINT_GROUPS = [
@@ -86,7 +91,12 @@ def main(argv: list[str] | None = None) -> None:
 
     _retrieve.add_parser(sub)
     _hybrid.add_parser(sub)
+    _rrf.add_parser(sub)
     _rerank.add_parser(sub)
+    _kmeans_rerank.add_parser(sub)
+    _gold_kmeans_rerank.add_parser(sub)
+    _cross_encoder_rerank.add_parser(sub)
+    _train_rocketqav2.add_parser(sub)
     _infer.add_parser(sub)
     _evaluate.add_parser(sub)
     _experiment.add_parser(sub)
