@@ -35,6 +35,7 @@ from sragents.cli import (
     rerank_topk as _rerank_topk,
     retrieve as _retrieve,
     train_rerank as _train_rerank,
+    train_rocketqav2 as _train_rocketqav2,
 )
 
 _ENTRY_POINT_GROUPS = [
@@ -103,6 +104,7 @@ def main(argv: list[str] | None = None) -> None:
     _mine_negatives.add_parser(sub)
     _make_splits.add_parser(sub)
     _train_rerank.add_parser(sub)
+    _train_rocketqav2.add_parser(sub)
     _rerank_topk.add_parser(sub)
     _bench_latency.add_parser(sub)
     _probe.add_parser(sub)
