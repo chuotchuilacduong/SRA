@@ -40,3 +40,18 @@ prune_outliers.py
 .pytest_cache
 .claude/
 experiments/
+
+# Runtime / Slurm logs
+*.log
+log_*.out
+log_*.err
+slurm-*.out
+
+# Process id / lock files
+*.pid
+
+# Model checkpoints / weights (large; results/ already ignored, this is defensive)
+*.pth
+*.pt
+*.safetensors
+*.ckpt
