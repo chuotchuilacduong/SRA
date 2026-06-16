@@ -63,12 +63,17 @@ def _assemble_json(dataset, method, instance, cand_meta, job_recs) -> dict:
                 best_pos_rank = meta["rank"]
         candidates_out.append(
             {**meta, "v": rec["v"], "utility": util,
+             "correct": bool(rec["v"]),
+             "raw_answer": rec["stripped_output"],
+             "raw_output_len": rec["raw_output_len"],
              "hidden_state_path": _rel_hs(dataset, rec["hs_name"])}
         )
 
     probes_out = {
         "no_skill": {
-            "skill_ids": [], "v": v_no, "extracted": by_tag["no_skill"]["extracted"],
+            "skill_ids": [], "v": v_no,
+            "correct": bool(v_no),
+            "raw_answer": by_tag["no_skill"]["stripped_output"],
             "raw_output_len": by_tag["no_skill"]["raw_output_len"],
             "thinking_leaked": by_tag["no_skill"]["thinking_leaked"],
             "hidden_state_path": _rel_hs(dataset, by_tag["no_skill"]["hs_name"]),
@@ -78,14 +83,16 @@ def _assemble_json(dataset, method, instance, cand_meta, job_recs) -> dict:
         probes_out["gold_skill"] = {
             "skill_ids": gold_skill_ids(instance), "v": v_gold,
             "utility": (v_gold - v_no) if v_gold is not None else None,
-            "extracted": gold_rec["extracted"], "raw_output_len": gold_rec["raw_output_len"],
+            "correct": bool(v_gold) if v_gold is not None else None,
+            "raw_answer": gold_rec["stripped_output"],
+            "raw_output_len": gold_rec["raw_output_len"],
             "thinking_leaked": gold_rec["thinking_leaked"],
             "hidden_state_path": _rel_hs(dataset, gold_rec["hs_name"]),
         }
 
     return {
         "qid": instance["instance_id"], "dataset": dataset, "method": method,
-        "generator_model": config.MODEL_ID, "generator_backend": "hf-transformers-4.46.3",
+        "generator_model": config.MODEL_ID, "generator_backend": "hf-transformers-5.x",
         "thinking_mode": False, "query": instance.get("question"),
         "gold_skill_ids": gold_skill_ids(instance),
         "candidates": candidates_out, "probes": probes_out,

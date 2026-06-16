@@ -47,7 +47,7 @@ class HFGenerator:
 
         self.tok = AutoTokenizer.from_pretrained(model_id)
         self.model = (
-            AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch_dtype)
+            AutoModelForCausalLM.from_pretrained(model_id, dtype=torch_dtype)
             .to(self.device)
             .eval()
         )
@@ -69,12 +69,16 @@ class HFGenerator:
         messages.append({"role": "user", "content": user})
         # enable_thinking is a Qwen3 chat-template kwarg (no-op on templates that
         # don't reference it — see plan risk #2; evaluators also strip <think>).
-        return self.tok.apply_chat_template(
+        encoded = self.tok.apply_chat_template(
             messages,
             add_generation_prompt=True,
             enable_thinking=self.enable_thinking,
             return_tensors="pt",
-        ).to(self.device)
+        )
+        # transformers >=5.x returns BatchEncoding; older versions return a raw tensor
+        if hasattr(encoded, "input_ids"):
+            encoded = encoded.input_ids
+        return encoded.to(self.device)
 
     def generate(self, system: str, user: str, pool: str = "last_token") -> tuple[str, np.ndarray]:
         """Generate the answer and capture pooled per-layer hidden states.
