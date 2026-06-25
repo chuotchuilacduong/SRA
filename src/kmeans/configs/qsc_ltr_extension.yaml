@@ -1,0 +1,95 @@
+# QSC + LTR extension config (docs/kmeans/implementation_qsc_ltr_extension.md §13).
+# Reuses the M4-v2 artifacts (fused pools, query embeddings, cluster stats) and
+# the m4_v2_default.yaml base config for paths/encoder/cluster params.
+
+qsc_ltr_extension:
+  base_config: src/kmeans/configs/m4_v2_default.yaml   # M4-v2 paths/params reused
+
+  datasets: [theoremqa, logicbench, toolqa, champ, medcalcbench, bigcodebench]
+
+  baselines:
+    load_a0_rrf: true
+    load_a1_m4: true
+    load_a7_prf: true
+    load_a8_full_m4v2: true
+
+  # --- Family QSC: query-specific local clustering ------------------------
+  qsc:
+    enabled: true
+    pool_size: 500
+    local_k_values: [8, 16, 32]
+    default_local_k: 16
+    # small-pool rule: H = min(16, max(2, floor(sqrt(M))))
+    kmeans_seed: 42
+    kmeans_n_init: 3
+    kmeans_max_iter: 100
+    qsc1_alpha: 0.85                 # QSC-1 base weight
+    qsc2_alpha: 0.80                 # QSC-2 base/aff/prior weights (sum=1)
+    qsc2_beta: 0.10
+    qsc2_gamma: 0.10
+    qsc3_delta: 0.05                 # QSC-3 near-tie window
+    qsc3_lambda: 0.05                # QSC-3 tie-break boost
+    # sweeps (run only when sweep_enabled); defaults above used for the main run
+    sweep_enabled: false
+    alpha_values: [0.80, 0.85, 0.90]
+    tiebreak_delta_values: [0.03, 0.05, 0.10]
+    tiebreak_lambda_values: [0.02, 0.05, 0.10]
+    # variant table (§4.9): base in {rrf(A0), m4(A2), a7(A7)}; scoring in {qsc1,qsc2,qsc3}
+    variants:
+      - {id: Q0, name: "QSC-RRF-aff",      base: rrf, scoring: qsc1}
+      - {id: Q1, name: "QSC-RRF-prior",    base: rrf, scoring: qsc2}
+      - {id: Q2, name: "QSC-RRF-tiebreak", base: rrf, scoring: qsc3}
+      - {id: Q3, name: "QSC-M4-aff",       base: m4,  scoring: qsc1}
+      - {id: Q4, name: "QSC-M4-tiebreak",  base: m4,  scoring: qsc3}
+      - {id: Q5, name: "QSC-A7-aff",       base: a7,  scoring: qsc1}
+      - {id: Q6, name: "QSC-A7-tiebreak",  base: a7,  scoring: qsc3}
+
+  # --- Family LTR: lightweight learning-to-rank ---------------------------
+  ltr:
+    enabled: true
+    split:
+      type: stratified_query_split
+      train: 0.70
+      dev: 0.15
+      test: 0.15
+      seed: 42
+    candidate_cap_per_query: 500
+    eval_on: test                    # LTR metrics computed on the held-out test split
+    missing_rank_value: 1000000      # rank for candidates absent from a ranker
+    lightgbm:
+      objective: lambdarank
+      metric: ndcg
+      eval_at: [1, 5, 10]
+      # reduced-but-dev-tuned grid (full grid from the spec is commented in NOTES);
+      # best config chosen by dev nDCG@10, early stopping on dev.
+      num_leaves: [31, 63]
+      learning_rate: [0.05]
+      n_estimators: [500]
+      min_data_in_leaf: [30]
+      early_stopping_rounds: 50
+      label_gain_binary: true
+    linear_pairwise:
+      negative_per_positive: 10
+      max_pairs_per_query: 50
+      C_values: [0.1, 1.0, 10.0]
+      seed: 42
+    # variant table (§5.7): feature groups in {retrieval, m4, a7, qsc, confidence}
+    variants:
+      - {id: L0, name: "LTR-RRF",         groups: [retrieval],                          model: lightgbm}
+      - {id: L1, name: "LTR-RRF-M4",      groups: [retrieval, m4],                       model: lightgbm}
+      - {id: L2, name: "LTR-RRF-A7",      groups: [retrieval, a7],                       model: lightgbm}
+      - {id: L3, name: "LTR-RRF-QSC",     groups: [retrieval, qsc],                      model: lightgbm}
+      - {id: L4, name: "LTR-M4-A7",       groups: [retrieval, m4, a7],                   model: lightgbm}
+      - {id: L5, name: "LTR-A7-QSC",      groups: [retrieval, a7, qsc],                  model: lightgbm}
+      - {id: L6, name: "LTR-FULL",        groups: [retrieval, m4, a7, qsc, confidence],  model: lightgbm}
+      - {id: L7, name: "LTR-LINEAR-FULL", groups: [retrieval, m4, a7, qsc, confidence],  model: linear}
+
+  reporting:
+    append_to: FULL_M4_V2_RESULTS.md
+    metrics_csv: results/comparisons/qsc_ltr_extension_metrics.csv
+    metrics_md: results/comparisons/qsc_ltr_extension_metrics.md
+    metrics_json: results/comparisons/qsc_ltr_extension_metrics.json
+    delta_md: results/comparisons/qsc_ltr_extension_delta.md
+    error_analysis: results/analysis/qsc_ltr_error_analysis.md
+    out_dir: results/qsc_ltr
+    cache_dir: results/m4_v2/cache/ltr_features

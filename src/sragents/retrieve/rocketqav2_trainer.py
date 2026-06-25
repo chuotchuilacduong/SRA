@@ -77,6 +77,33 @@ class RocketQAv2Config:
 
     log_every: int = 50
 
+    # --- F1-F4 distillation knobs (added for KL_FULL_RUN_PLAN.md) -------------
+    distill_temperature: float = 4.0
+    """Softmax temperature T for KL distillation. Larger T → softer, less
+    scale-sensitive; the KL term is scaled by T² to keep gradient magnitude
+    comparable to the unscaled supervised loss (Hinton et al., 2015)."""
+
+    lambda_kl_max: float = 1.0
+    """Upper bound for the KL loss weight. Used together with
+    :attr:`lambda_kl_warmup_epochs` to ramp KL in gradually."""
+
+    lambda_kl_warmup_epochs: int = 2
+    """Number of epochs over which lambda_kl ramps 0 → ``lambda_kl_max``.
+    Set to 0 to disable warmup (lambda_kl always at max)."""
+
+    grad_clip_norm: float = 1.0
+    """Max ℓ₂ norm for ``torch.nn.utils.clip_grad_norm_`` over the union of
+    DE + CE parameters. Set ≤ 0 to disable clipping."""
+
+    distill_direction: str = "de_from_ce"
+    """KL direction. One of:
+
+    * ``"de_from_ce"`` (default) — DE student, CE teacher (CE detached).
+      Preferred when CE has stronger prior knowledge (e.g. MS-MARCO).
+    * ``"ce_from_de"`` — CE student, DE teacher (DE detached).
+    * ``"bidirectional"`` — symmetric JSD = ½(KL(p_de||m) + KL(p_ce||m)).
+    """
+
     @classmethod
     def from_yaml(cls, path: Path) -> "RocketQAv2Config":
         cfg = yaml.safe_load(Path(path).read_text())
@@ -105,6 +132,13 @@ class RocketQAv2Config:
             early_stop_metric=trainer.get("early_stop_metric", cls.early_stop_metric),
             early_stop_patience=trainer.get("early_stop_patience", cls.early_stop_patience),
             log_every=trainer.get("log_every", cls.log_every),
+            distill_temperature=rq.get("distill_temperature", cls.distill_temperature),
+            lambda_kl_max=rq.get("lambda_kl_max", cls.lambda_kl_max),
+            lambda_kl_warmup_epochs=rq.get(
+                "lambda_kl_warmup_epochs", cls.lambda_kl_warmup_epochs,
+            ),
+            grad_clip_norm=rq.get("grad_clip_norm", cls.grad_clip_norm),
+            distill_direction=rq.get("distill_direction", cls.distill_direction),
         )
 
 
@@ -140,6 +174,60 @@ def _mean_pool(outputs, attention_mask: torch.Tensor) -> torch.Tensor:
     summed = (token_emb * mask).sum(dim=1)
     counts = mask.sum(dim=1).clamp(min=1e-9)
     return F.normalize(summed / counts, p=2, dim=-1)
+
+
+def kl_distill_loss(
+    de_scores: torch.Tensor,
+    ce_raw: torch.Tensor,
+    *,
+    temperature: float = 4.0,
+    direction: str = "de_from_ce",
+) -> torch.Tensor:
+    """Temperature-scaled, stop-gradient KL between DE and CE listwise dists.
+
+    See docs/KL_DE_CE_ANALYSIS.md §2 for why the legacy bi-directional KL
+    without temperature kept ranking unchanged (Spearman ρ=0.99) while
+    flattening the CE distribution.
+
+    Args:
+        de_scores: (N,) cosine logits over the candidate pool.
+        ce_raw:    (N,) cross-encoder logits over the candidate pool.
+        temperature: Softmax temperature ``T``. Output is multiplied by
+            ``T²`` so gradient magnitude is comparable across temperatures.
+        direction: One of ``"de_from_ce"``, ``"ce_from_de"``,
+            ``"bidirectional"`` (JSD).
+    """
+    T = float(temperature)
+    if T <= 0.0:
+        raise ValueError(f"distill_temperature must be > 0, got {T}")
+    if direction == "de_from_ce":
+        log_p_student = F.log_softmax(de_scores / T, dim=0)
+        p_teacher     = F.softmax(ce_raw / T, dim=0).detach()
+        return F.kl_div(log_p_student, p_teacher, reduction="batchmean") * (T * T)
+    if direction == "ce_from_de":
+        log_p_student = F.log_softmax(ce_raw / T, dim=0)
+        p_teacher     = F.softmax(de_scores / T, dim=0).detach()
+        return F.kl_div(log_p_student, p_teacher, reduction="batchmean") * (T * T)
+    if direction == "bidirectional":
+        # symmetric JSD around the average distribution m
+        log_p_de = F.log_softmax(de_scores / T, dim=0)
+        log_p_ce = F.log_softmax(ce_raw     / T, dim=0)
+        log_m = torch.logaddexp(log_p_de, log_p_ce) - torch.log(
+            torch.tensor(2.0, device=log_p_de.device),
+        )
+        kl_de = F.kl_div(log_m, log_p_de.exp(), reduction="batchmean")
+        kl_ce = F.kl_div(log_m, log_p_ce.exp(), reduction="batchmean")
+        return 0.5 * (kl_de + kl_ce) * (T * T)
+    raise ValueError(f"unknown distill_direction={direction!r}")
+
+
+def _lambda_kl_for_epoch(
+    epoch: int, *, max_lambda: float, warmup_epochs: int,
+) -> float:
+    """Linear warmup from 0 → ``max_lambda`` over the first ``warmup_epochs``."""
+    if warmup_epochs <= 0:
+        return float(max_lambda)
+    return float(max_lambda) * min(1.0, (epoch + 1) / float(warmup_epochs))
 
 
 def _build_candidate_list(pairs: list[dict]) -> tuple[list[dict], int] | None:
@@ -409,21 +497,25 @@ def train_rocketqav2(
                     config.ce_max_length, config.encode_sub_batch, device, ctx,
                 )  # (N,)
 
-                # Listwise distributions
-                p_de_log = F.log_softmax(de_scores, dim=0)   # log p̃_DE
-                p_ce_log = F.log_softmax(ce_raw, dim=0)      # log p̃_CE
-                p_de = p_de_log.exp()                         # p̃_DE
-
-                # L_KL = KL(p̃_DE ‖ p̃_CE) = Σ p̃_DE * (log p̃_DE - log p̃_CE)
-                L_kl = F.kl_div(p_ce_log, p_de, reduction="sum")
-
+                # F1+F2: stop-grad teacher, temperature-scaled KL
+                # F3: λ warmup applied at the batch_loss accumulation below
+                L_kl = kl_distill_loss(
+                    de_scores, ce_raw,
+                    temperature=config.distill_temperature,
+                    direction=config.distill_direction,
+                )
                 # L_sup: listwise cross-entropy on CE scores (Eq.5 in paper)
                 L_sup = F.cross_entropy(
                     ce_raw.unsqueeze(0),
                     torch.tensor([pos_idx], device=device),
                 )
 
-                batch_loss = batch_loss + L_kl + L_sup
+                lam_kl = _lambda_kl_for_epoch(
+                    epoch,
+                    max_lambda=config.lambda_kl_max,
+                    warmup_epochs=config.lambda_kl_warmup_epochs,
+                )
+                batch_loss = batch_loss + lam_kl * L_kl + L_sup
                 n_valid += 1
 
             if n_valid == 0:
@@ -436,6 +528,15 @@ def train_rocketqav2(
                 loss.backward()
 
             if (step + 1) % config.grad_accum_steps == 0:
+                # F4: gradient clipping over union of DE+CE parameters.
+                # For fp16, unscale BEFORE clipping (otherwise we clip scaled grads).
+                if config.grad_clip_norm and config.grad_clip_norm > 0:
+                    if use_fp16:
+                        scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(
+                        list(de_model.parameters()) + list(ce_model.parameters()),
+                        max_norm=config.grad_clip_norm,
+                    )
                 if use_fp16:
                     scaler.step(optimizer); scaler.update()
                 else:

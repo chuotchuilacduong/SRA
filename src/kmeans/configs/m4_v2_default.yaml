@@ -1,0 +1,94 @@
+# M4-v2 default configuration (Cluster-Aware RRF Reranker).
+# Paths are relative to the repo root (sragents.config.PROJECT_ROOT).
+# Values mirror the spec's recommended defaults (implementation_m4_v2 §8.6).
+
+m4_v2:
+  # --- pool / fusion -------------------------------------------------------
+  rrf_k: 60
+  pool_size: 500            # M — RRF candidate pool for M4-v2 variants
+  pool_size_m1: 100         # pool size for the A1 "current M4" replicate
+  pool_build_max: 1000      # M_max: fused list cached once, every variant slices from it
+  output_top_k: 100         # final list length written per query
+  eval_top_k: 100           # cap passed to the metric fns (so R@100 is computed)
+
+  # --- clustering ----------------------------------------------------------
+  kmeans_k: 300
+  soft_cluster_top_l: 10    # L — sparse top-L clusters for soft affinity
+
+  # --- soft cluster distribution ------------------------------------------
+  softmax_tau: 20           # tau — temperature for p(k|.)
+
+  # --- pseudo-relevance feedback (Step 5) ---------------------------------
+  prf_enabled: true
+  prf_rho: 0.2              # query refinement strength
+  prf_gamma: 5              # softmax temperature for PRF weights
+  prf_bm25_rank_cutoff: 50  # R_b
+  prf_bge_rank_cutoff: 50   # R_d
+  prf_min_safe_candidates: 3
+  prf_fallback_top_rrf: 10
+
+  # --- cluster reliability calibration (Step 4) ---------------------------
+  cluster_reliability:
+    enabled: true
+    rel_min: 0.05
+    rel_max: 1.0
+
+  # --- adaptive alpha (Step 9) --------------------------------------------
+  adaptive_alpha:
+    enabled: true
+    alpha0: 0.7
+    lambda: 0.2
+    alpha_min: 0.45
+    alpha_max: 0.90
+    conf_rrf_top: 1          # s_1 (1-indexed) for RRF-confidence gap
+    conf_rrf_bottom: 10      # s_10 (1-indexed); falls back to last if pool < 10
+
+  # --- fixed alpha for non-adaptive variants ------------------------------
+  fixed_alpha: 0.7
+
+  eps: 1.0e-8
+
+  # --- encoder -------------------------------------------------------------
+  bge_model: BAAI/bge-base-en-v1.5
+  bge_prefix: "Represent this sentence for searching relevant passages: "
+  bge_batch_size: 128
+
+  # --- datasets ------------------------------------------------------------
+  datasets: [theoremqa, logicbench, toolqa, champ, medcalcbench, bigcodebench]
+
+  # --- artifact paths (relative to repo root) -----------------------------
+  paths:
+    corpus: data/bench/corpus/corpus.json
+    instances_dir: data/bench/instances
+    corpus_emb: results/bge/corpus_emb.npy
+    corpus_ids: results/bge/corpus_ids.json
+    clusters: results/clusters.json
+    centroids: results/clusters_centroids.npy
+    extended_pool_tmpl: results/pool/extended-{ds}.json   # cached top-100 RRF pool (A1 exact source)
+    query_emb_dir: results/m4_v2/cache/query_emb
+    cluster_stats: results/m4_v2/cache/cluster_stats.json
+    fused_pool_dir: results/m4_v2/cache/fused_pool          # recomputed top-M_max RRF pools
+    out_dir: results/m4_v2
+    ablation_dir: results/m4_v2/ablation
+    comparisons_dir: results/comparisons
+    analysis_dir: results/analysis
+    logs_dir: logs/m4_v2
+
+  # --- A1 fidelity knob ----------------------------------------------------
+  # If true, A1 reranks the cached extended-{ds}.json pool directly (reproduces the
+  # published Method-4 numbers exactly). If false, A1 uses the recomputed @100 pool
+  # (cleaner A2-A1 ablation but may differ by <~0.5pp). See IMPLEMENTATION_NOTES §4.
+  a1_use_cached_extended_pool: true
+
+# Ablation variant table (implementation_m4_v2 §7.1). affinity ∈
+# {none, hard, hard_calibrated, soft, soft_calibrated}; alpha ∈ {fixed, adaptive, none}.
+variants:
+  - {id: A0, name: "RRF baseline",                pool: 500, prf: false, affinity: none,            alpha: none}
+  - {id: A1, name: "Current M4 replicate",        pool: 100, prf: false, affinity: hard,            alpha: fixed}
+  - {id: A2, name: "M4 + larger pool",            pool: 500, prf: false, affinity: hard,            alpha: fixed}
+  - {id: A3, name: "M4 + calibrated hard aff",    pool: 500, prf: false, affinity: hard_calibrated, alpha: fixed}
+  - {id: A4, name: "M4 + soft affinity",          pool: 500, prf: false, affinity: soft,            alpha: fixed}
+  - {id: A5, name: "M4 + soft-calibrated aff",    pool: 500, prf: false, affinity: soft_calibrated, alpha: fixed}
+  - {id: A6, name: "M4 + adaptive alpha",         pool: 500, prf: false, affinity: soft_calibrated, alpha: adaptive}
+  - {id: A7, name: "M4 + PRF only",               pool: 500, prf: true,  affinity: hard,            alpha: fixed}
+  - {id: A8, name: "Full M4-v2",                  pool: 500, prf: true,  affinity: soft_calibrated, alpha: adaptive}
