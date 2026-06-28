@@ -60,9 +60,11 @@ def rerank_chunk(args: dict) -> list[dict]:
 # --- candidate-list builders -------------------------------------------------
 
 def queries_from_feature_tables(cfg, ext, datasets, pool_size=500):
-    """RRF top-``pool_size`` per query with Stage1 = M4 score (from feature tables)."""
+    """RRF top-``pool_size`` per query with Stage1 = M4 score (from feature tables).
+    Each candidate also carries ``rrf_rank`` so a pool can be depth-restricted later."""
     from kmeans import ltr_features, ltr, io
     im4 = ltr_features.ALL_FEATURES.index("m4_score")
+    irk = ltr_features.ALL_FEATURES.index("rrf_rank")
     qtext = {}
     for ds in datasets:
         for r in io.load_instances(cfg, ds):
@@ -72,10 +74,50 @@ def queries_from_feature_tables(cfg, ext, datasets, pool_size=500):
         t = ltr_features.load_features(PROJECT_ROOT / ext["reporting"]["cache_dir"] / f"{ds}.npz")
         for qid, Xq, yq, sids, gold in ltr.iter_queries(t):
             n = min(pool_size, len(sids))
-            cands = [{"skill_id": sids[j], "score": float(Xq[j, im4])} for j in range(n)]
+            cands = [{"skill_id": sids[j], "score": float(Xq[j, im4]),
+                      "rrf_rank": int(Xq[j, irk])} for j in range(n)]
             out.append({"instance_id": qid, "dataset": ds, "question": qtext[qid],
                         "gold": list(gold), "candidates": cands})
     return out
+
+
+# --- pure CE (M5 = CE-HYRR, no fusion) ---------------------------------------
+
+def build_ce_only():
+    from sragents.corpus import load_corpus_dict
+    from sragents.retrieve.skill_packer import SkillPacker
+    from sragents.retrieve.cross_rerank import CrossEncoderReranker
+    return CrossEncoderReranker(model_name=str(PROJECT_ROOT / CE_MODEL), device="cpu",
+                                max_length=MAX_LENGTH, packer=SkillPacker(**PACKER_KW),
+                                corpus=load_corpus_dict())
+
+
+def rerank_chunk_ce(args: dict) -> list[dict]:
+    """Worker: rank ALL candidates by raw CE logit (M5, no fusion); carries rrf_rank
+    so the driver can derive both @500 and @100 (depth-restricted) rankings."""
+    ce = build_ce_only()
+    out = []
+    for q in args["queries"]:
+        ranked = ce.rerank(q["question"], q["candidates"], top_k=len(q["candidates"]),
+                           batch_size=BATCH_SIZE)
+        out.append({"instance_id": q["instance_id"], "dataset": q["dataset"],
+                    "gold_skill_ids": q["gold"],
+                    "ranked": [{"skill_id": c["skill_id"],
+                                "rrf_rank": int(c.get("rrf_rank", 10 ** 9))} for c in ranked]})
+    return out
+
+
+def run_parallel_ce(queries: list[dict], workers: int) -> list[dict]:
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+    chunks = [queries[i::workers] for i in range(workers)]
+    chunks = [c for c in chunks if c]
+    results = []
+    with ProcessPoolExecutor(max_workers=len(chunks)) as ex:
+        futs = [ex.submit(rerank_chunk_ce, {"queries": ch}) for ch in chunks]
+        for i, fut in enumerate(as_completed(futs)):
+            results.extend(fut.result())
+            logger.info("  [pure-CE] chunk %d/%d done (%d queries)", i + 1, len(chunks), len(results))
+    return results
 
 
 def queries_from_hybrid_km(cfg, datasets, top_k=100):

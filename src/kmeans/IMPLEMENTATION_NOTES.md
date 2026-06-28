@@ -626,5 +626,77 @@ lower cost (matches CE on R@100; ~4pp behind on nDCG@10), NOT SOTA."** Integrate
 `FULL_M4_V2_RESULTS.md` §15 (mean±std), §16, §17 (CE@100/CE@500 depth-matched table), §18
 (significance L6 vs CE@500). No retraining was required or done.
 
+## 25. M5 (CE-HYRR, raw CE no-fusion) @100 và @500 (user request)
+
+Thêm baseline **M5 = Cross-Encoder thuần** (chỉ logit CE, KHÔNG fuse Stage-1). Method 7 =
+M5 + fusion `0.7·CE + 0.3·M4`. Code: `ce500.rerank_chunk_ce` / `run_ce500.py --mode m5`.
+**M5@100** = `results/rerank/full_bench_h100-{ds}.json` (raw CE@100 đã publish). **M5@500** =
+pure-CE rerank RRF top-500 (ce-joint-v3, no fusion) — **không train lại**.
+
+**Gate (Δ=0.000 cả 6 dataset):** M5@100 suy ra từ pass-500 (lọc rrf_rank≤100) khớp tuyệt đối
+`full_bench_h100`. Cross-check: M5@100 macro R@10 **82.64**, nDCG@10 **69.74** — đúng số "CE-only"
+ghi trong `beta_ce_rerank.py` docstring → pipeline chính xác.
+
+**Kết quả (full-set macro %):**
+
+| | R@1 | R@10 | R@50 | R@100 | nDCG@10 |
+|---|--:|--:|--:|--:|--:|
+| M5-CE@100 (raw CE) | 47.81 | 82.64 | 91.44 | 92.23 | 69.74 |
+| M7-CE@100 (CE+fusion) | 53.78 | 86.06 | 91.88 | 92.23 | 74.67 |
+| M5-CE@500 (raw CE) | 44.92 | 83.41 | 94.56 | 95.86 | 67.71 |
+| M7-CE@500 (CE+fusion) | 53.56 | 88.83 | 96.15 | 96.78 | 75.96 |
+| L6@500 (LTR) | 49.42 | 82.01 | 94.94 | 96.34 | 68.99 |
+
+**3 phát hiện:**
+1. **Fusion mới làm CE mạnh:** M5→M7 thêm +4.9 nDCG@10 (@100), +8.3 (@500). CE thuần yếu hơn hẳn.
+2. **Pool sâu hại CE thuần ở top:** M5@500 nDCG 67.71 < M5@100 69.74 (R@1 44.92<47.81); nhưng vớt
+   recall sâu (R@100 95.86>92.23). Fusion (M7) khắc phục.
+3. **L6 ngang raw-CE@100 và VƯỢT raw-CE@500:** L6@500 nDCG 68.99 > M5@500 67.71 (Δ=+2.38, p=0;
+   R@10 +0.94, p=0.064); L6@100 68.65 ≈ M5@100 69.74. → LTR nhẹ bằng/hơn cross-encoder thô; chỉ
+   CE+fusion (M7) mới rõ ràng hơn L6.
+
+Đã thêm M5 vào §15, §16, §16.1, §16.2, §17 (@100 & @500), §18. Bug đã sửa: integration crash do
+đọc `ce500/{ds}.jsonl` (JSONL) bằng `json.loads` → dùng `_read_jsonl`; thêm reuse cache `m5_500/`
+để khỏi chạy lại CE pass. CE pass (2.7M cặp) chỉ chạy 1 lần.
+
+## 26. §20 Fair supervised comparison (query_gen-test, no CE-leakage) — verdict thay đổi
+
+**Phát hiện fairness (quan trọng):** CE `ce-joint-v3` (M5/M7) được fine-tune trên **query_gen-train
+= 3.782 query** (xác nhận: `all_train_pairs_v2.json` = **43.098 pairs / 3.782 queries**, khớp đúng
+`train_summary`). Ở §15–§19, CE được chấm trên *full-set* / CV-fold → **~70% query đánh giá CE chính
+là query CE đã train** → CE bị **thổi phồng**. L6 (OOF) luôn held-out → so sánh §17 lệch *về phía CE*.
+
+**Fix (`run_fair_eval.py`):** train **final L6** trên query_gen-train (+dev early-stop) → đánh giá
+**mọi method trên cùng query_gen-test (1.079 q, held-out cho CẢ L6 và CE)**. Audit: train∩test=0,
+dev∩test=0. Final model lưu `results/models/l6_ltr_final.txt` (+`.features.json`); dataset đưa vào
+`data/l6_final/` (train/dev/test npz), `data/ce_train/` (43.098 pairs), `data/splits_query_gen/`.
+
+**Kết quả (query_gen-test, macro %):**
+
+| Method | R@1 | R@10 | R@100 | nDCG@10 |
+|---|--:|--:|--:|--:|
+| **L6-final (no-CE)** | **48.34** | 81.07 | **97.10** | 67.43 |
+| M5-CE@500 (raw CE) | 39.17 | 76.94 | 94.00 | 61.44 |
+| M7-CE@100 | 46.54 | 83.12 | 92.80 | 68.99 |
+| M7-CE@500 (CE+fusion) | 45.74 | 84.92 | 96.37 | 69.42 |
+| A7 PRF | 33.54 | 69.65 | 94.35 | 54.09 |
+| RRF / BM25 / BGE | 35.9/39.7/28.5 | 70.2/65.9/57.7 | 93.0/83.5/85.3 | 55.5/54.8/45.5 |
+
+**De-leak làm đảo verdict:** CE@500 nDCG@10 rớt **75.96 (leaky) → 69.42 (fair)**; L6 gần như không
+đổi (OOF 69.0 → test 67.4). Significance (paired bootstrap, query_gen-test):
+- **L6 vs M7-CE@500: nDCG@10 Δ=−1.85, p=0.063 (KHÔNG có ý nghĩa thống kê = HOÀ);** R@10 −2.71 (p=0.009);
+  **R@1 +2.60 và R@100 +0.73 (L6 THẮNG).**
+- **L6 vs M5-CE@500 (raw CE): nDCG@10 +4.41 (p=0), R@10 +2.67 (p=0.02) — L6 THẮNG raw-CE.**
+- L6 vs A7/BM25/Q6: +12–17pp, p=0.
+
+**Kết luận mới (mạnh hơn nhiều §16):** trên so sánh **fair, không leakage, cùng split+depth**, **L6
+(LTR nhẹ, KHÔNG CE) ngang ngửa CE Method 7**: hoà nDCG@10 (−1.85, p=0.063), **thắng R@1 (+2.6) và
+R@100**, **thắng raw-CE (M5) rõ rệt** — với chi phí inference thấp hơn ~10–50× và không cần GPU. Phần
+"CE > L6 ~4–7pp" ở §17–§19 chủ yếu là **artifact do CE-leakage**, đã được sửa ở §20. Lưu ý: L6 dùng
+moderate grid (4 config) cho final; full grid (CV cho OOF 69.0) có thể thu hẹp nốt khoảng cách nDCG.
+
+Claim cập nhật an toàn: **"L6 là reranker no-CE/lightweight tốt nhất, *cạnh tranh ngang* CE
+cross-encoder (hoà nDCG@10, thắng R@1/R@100) trên test fair, với chi phí thấp hơn nhiều."**
+
 
 

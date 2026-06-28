@@ -1,0 +1,31 @@
+# CE-Raw listwise config — identical recipe to ce-joint-v3
+# (experiments/configs/train_loss_listwise.yaml). The ONLY change vs M5/M7 is the
+# training *data*: negatives mined from the FULL corpus (data/ce_raw/ce_pairs_train.json),
+# not the M4 stage-1 @100 pool. The `negatives` block below is informational only —
+# mining is done in Phase 1 (ceraw_build_dataset.py); the trainer just consumes pairs.
+model:
+  base: cross-encoder/ms-marco-MiniLM-L-6-v2
+  max_length: 256
+trainer:
+  batch_size: 33
+  lr: 2.0e-5
+  epochs: 3
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  seed: 42
+  fp16_if_cuda: true
+  grad_accum_steps: 1
+  early_stop_metric: dev_ndcg@10
+  early_stop_patience: 99
+  balanced_by_dataset: true
+  group_by_query: true
+  queries_per_batch: 3
+loss: listwise
+packing:
+  mode: field_tagged
+  include_tools: false
+  max_content_chars: 1800
+negatives:           # informational only (see Phase 1)
+  source: full_corpus
+  ratio: {bm25_hard: 4, bge_hard: 3, cluster_hard: 2, random: 1}
+  false_negative_filter: {name_dedup: true, jaccard: 0.6, cosine: 0.92}

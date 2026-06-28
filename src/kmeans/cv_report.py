@@ -82,7 +82,8 @@ def _all_methods_per_dataset(c):
         if vid in c["ltr"]:
             e = c["ltr"][vid]
             rows.append((f"{vid} {e.get('name', '')}".strip(), e.get("oof_by_dataset", {}), e["oof_macro"]))
-    for name, disp in [("Method7-CE", "Method7-CE@100"), ("Method7-CE@500", "Method7-CE@500")]:
+    for name, disp in [("M5-CE@100", "M5-CE@100"), ("M5-CE@500", "M5-CE@500"),
+                       ("Method7-CE", "Method7-CE@100"), ("Method7-CE@500", "Method7-CE@500")]:
         if name in c["baselines"]:
             b = c["baselines"][name]
             rows.append((disp, b.get("full_by_dataset", {}), b["full_macro"]))
@@ -349,17 +350,27 @@ def append_sections(cfg, c, err_counts):
 
     ce_block = ""
     if "Method7-CE" in c["baselines"]:
-        m7 = c["baselines"]["Method7-CE"]["full_macro"]
-        m7_500 = c["baselines"].get("Method7-CE@500", {}).get("full_macro", {})
+        bl = c["baselines"]
+        def _m(name):
+            return bl.get(name, {}).get("full_macro", {})
+        m5_100, m5_500 = _m("M5-CE@100"), _m("M5-CE@500")
+        m7_100, m7_500 = _m("Method7-CE"), _m("Method7-CE@500")
         l6_100 = c["ltr"]["L6"].get("d100_oof_macro", {})
         l6_500 = c["ltr"]["L6"]["oof_macro"]
-        rows = [["Method7-CE@100", *[f"{m7.get(m, float('nan')):.2f}" for m in METRICS]],
-                ["L6@100 (depth-matched to CE@100)", *[f"{l6_100.get(m, float('nan')):.2f}" for m in METRICS]]]
+        def _row(lbl, d):
+            return [lbl, *[(f"{d.get(m, float('nan')):.2f}") for m in METRICS]]
+        rows = []
+        # depth-100 block
+        if m5_100:
+            rows.append(_row("M5-CE@100 (raw CE)", m5_100))
+        rows.append(_row("Method7-CE@100 (CE+fusion)", m7_100))
+        rows.append(_row("L6@100", l6_100))
+        # depth-500 block
+        if m5_500:
+            rows.append(_row("**M5-CE@500 (raw CE)**", m5_500))
         if m7_500:
-            rows += [["**Method7-CE@500**", *[f"{m7_500.get(m, float('nan')):.2f}" for m in METRICS]],
-                     ["**L6@500 (depth-matched to CE@500)**", *[f"{l6_500.get(m, float('nan')):.2f}" for m in METRICS]]]
-        else:
-            rows += [["L6@500 (deeper pool)", *[f"{l6_500.get(m, float('nan')):.2f}" for m in METRICS]]]
+            rows.append(_row("**Method7-CE@500 (CE+fusion)**", m7_500))
+        rows.append(_row("**L6@500**", l6_500))
         ce_block = _md(["Method", *SHORT], rows)
 
     sig_rows = []
