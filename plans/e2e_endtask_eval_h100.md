@@ -12,7 +12,8 @@ Retrieval | Skill-use | theoremqa | logicbench | toolqa | champ | medcalcbench |
 - LLM Direct + Oracle Skill are retrieval-independent (`Retrieval = —`), computed once/model.
 - **20 cells/model** (2 + 6×3); **Average = instance-weighted** (Σcorrect/Σtotal over the 1,079).
 
-The whole run is driven by one experiment: **`sragents experiment --exp endtask`** (added in
+The whole run is driven by one experiment: **`python -m sragents.cli.main experiment --exp endtask`**
+(no `sragents` console script is installed; invoke the module with `PYTHONPATH=src`). Added in
 `src/sragents/experiments/definitions.py`). The runner auto-picks engines per dataset
 (ToolQA→ReAct), resolves retrieval-source files, and is resume/idempotent.
 
@@ -76,13 +77,13 @@ curl -s http://localhost:8000/v1/models   # health check
 ## 5. Stage D — run all 20 cells per model (infer + evaluate)
 ```bash
 # Qwen3-4B
-sragents experiment --exp endtask --model Qwen/Qwen3-4B \
+python -m sragents.cli.main experiment --exp endtask --model Qwen/Qwen3-4B \
     --api-base http://localhost:8000/v1 \
     --instances-dir data/bench/instances_test \
     --workers 32 --eval-workers 8 --temperature 0.7 --max-tokens 4096
 
 # Qwen3-32B
-sragents experiment --exp endtask --model Qwen/Qwen3-32B \
+python -m sragents.cli.main experiment --exp endtask --model Qwen/Qwen3-32B \
     --api-base http://localhost:8001/v1 \
     --instances-dir data/bench/instances_test \
     --workers 32 --eval-workers 8 --temperature 0.7 --max-tokens 4096
@@ -108,7 +109,7 @@ for f in glob.glob("results/retrieval/*-*.json"):
     print(f.split('/')[-1], "rows",len(d["results"]),"unknown_skill_ids(top50)",bad)
 PY
 # (b) ToolQA sanity — 5 instances, check Observations are real tool outputs (not errors)
-head -c 0 /dev/null; sragents infer --instances data/bench/instances_test/toolqa.json \
+python -m sragents.cli.main infer --instances data/bench/instances_test/toolqa.json \
     --output /tmp/tq.jsonl --model Qwen/Qwen3-4B --api-base http://localhost:8000/v1 \
     --provider topk --provider-arg source=results/retrieval/toolqa-bm25.json --provider-arg k=1 \
     --engine react --workers 4 --label probe   # then inspect /tmp/tq.jsonl transcripts
