@@ -28,8 +28,8 @@ cd /home/quynhtl/projects/SRA && git fetch origin && git checkout <branch> && gi
 export PYTHONPATH=src
 ```
 New/changed (all tracked): `src/sragents/experiments/definitions.py` (`endtask` spec),
-`src/kmeans/scripts/{run_fair_eval.py, ceraw_eval.py}` (retrieval-source exports),
-`src/kmeans/scripts/make_test_instances.py`, `src/kmeans/scripts/aggregate_endtask_tables.py`.
+`src/kmeans/scripts/ltr/{run_fair_eval.py, ceraw_eval.py}` (retrieval-source exports),
+`src/kmeans/scripts/analysis/{make_test_instances.py, aggregate_endtask_tables.py}`.
 
 ## 1. Prerequisites on H100 (`data/`,`results/` symlinked to /mnt/data)
 - `data/bench/corpus/corpus.json`, `data/bench/instances/{6}.json`, `results/splits/{6}-query_gen.json`.
@@ -44,19 +44,19 @@ New/changed (all tracked): `src/sragents/experiments/definitions.py` (`endtask` 
 ## 2. Stage A — materialize retrieval-source files → `results/retrieval/{ds}-{source}.json`
 ```bash
 # L6_final (also retrains/saves the final L6; writes results/retrieval/{ds}-l6_final.json)
-python src/kmeans/scripts/run_fair_eval.py --grid moderate
+python src/kmeans/scripts/ltr/run_fair_eval.py --grid moderate
 
 # CE-Raw×3 + bge_ft retriever-only (CUDA: omit SRA_ALLOW_MPS). Writes:
 #   {ds}-ceraw_bge_base.json {ds}-ceraw_rrf.json {ds}-ceraw_bge_ft.json {ds}-bge_ft_retriever.json
-python src/kmeans/scripts/ceraw_eval.py --retrievers bge_base,rrf,bge_ft \
+python src/kmeans/scripts/ceraw/ceraw_eval.py --retrievers bge_base,rrf,bge_ft \
     --rerank-depth 1000 --ce-model results/models/ce-raw-v1
 
 # L6-union-bgeft@100 (the best reranker, §24): build bge_ft features cache, then the union source.
 #   add_bgeft_features.py -> cache/ltr_features_bgeft/{ds}.npz + cache/query_emb_ft/{ds}.npy
 #   run_l6_union_bgeft.py --K 100 -> results/retrieval/{ds}-l6_union_bgeft_k100.json
 #   (needs results/models/sr-emb-bge-v1, results/bge/corpus_ids.json, cache/ltr_features/{ds}.npz)
-python src/kmeans/scripts/add_bgeft_features.py
-python src/kmeans/scripts/run_l6_union_bgeft.py --K 100
+python src/kmeans/scripts/ltr/add_bgeft_features.py
+python src/kmeans/scripts/ltr/run_l6_union_bgeft.py --K 100
 
 # BM25 source = the cached file under the name the runner expects
 mkdir -p results/retrieval
@@ -68,7 +68,7 @@ ls results/retrieval/   # expect 6 datasets × 7 sources = 42 files
 
 ## 3. Stage B — test-only instances (no `--split` flag exists)
 ```bash
-python src/kmeans/scripts/make_test_instances.py   # -> data/bench/instances_test/{ds}.json, TOTAL 1079
+python src/kmeans/scripts/analysis/make_test_instances.py   # -> data/bench/instances_test/{ds}.json, TOTAL 1079
 ```
 
 ## 4. Stage C — serve a model (OpenAI-compatible vLLM)
@@ -127,7 +127,7 @@ python -m sragents.cli.main infer --instances data/bench/instances_test/toolqa.j
 
 ## 7. Stage E — build the two tables
 ```bash
-python src/kmeans/scripts/aggregate_endtask_tables.py --models Qwen3-4B Qwen3-32B
+python src/kmeans/scripts/analysis/aggregate_endtask_tables.py --models Qwen3-4B Qwen3-32B
 # -> results/comparisons/endtask_{Qwen3-4B,Qwen3-32B}.{md,csv} + results/comparisons/endtask_tables.md
 ```
 Average column = `100 · Σcorrect / Σtotal` over the datasets that ran (instance-weighted; matches the
@@ -147,9 +147,10 @@ the 3 retrieval-dependent strategies.
 | File | Role |
 |---|---|
 | `src/sragents/experiments/definitions.py` | `endtask` spec (23 methods; +l6_union_bgeft@100) |
-| `src/kmeans/scripts/{add_bgeft_features,run_l6_union_bgeft}.py` | build the l6_union_bgeft@100 source (Stage A) |
-| `src/kmeans/scripts/run_fair_eval.py` | exports `results/retrieval/{ds}-l6_final.json` |
-| `src/kmeans/scripts/ceraw_eval.py` | exports `{ds}-ceraw_{bge_base,rrf,bge_ft}.json` + `{ds}-bge_ft_retriever.json` |
-| `src/kmeans/scripts/make_test_instances.py` | `data/bench/instances_test/{ds}.json` (1,079) |
-| `src/kmeans/scripts/aggregate_endtask_tables.py` | pivots eval JSONs → the two tables |
+| `src/kmeans/scripts/ltr/{add_bgeft_features,run_l6_union_bgeft}.py` | build the l6_union_bgeft@100 source (Stage A) |
+| `src/kmeans/scripts/ltr/run_fair_eval.py` | exports `results/retrieval/{ds}-l6_final.json` |
+| `src/kmeans/scripts/ceraw/ceraw_eval.py` | exports `{ds}-ceraw_{bge_base,rrf,bge_ft}.json` + `{ds}-bge_ft_retriever.json` |
+| `src/kmeans/scripts/analysis/make_test_instances.py` | `data/bench/instances_test/{ds}.json` (1,079) |
+| `src/kmeans/scripts/analysis/aggregate_endtask_tables.py` | pivots eval JSONs → the two tables |
+| `src/kmeans/scripts/analysis/run_endtask_h100.sh` | one-shot wrapper: Stages B–E for one model |
 | `src/sragents/cli/{infer,evaluate,experiment}.py`, `infer/providers/{topk,llm_select,oracle,none}.py`, `infer/engines/*` | harness (reference) |
