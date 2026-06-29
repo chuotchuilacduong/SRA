@@ -38,9 +38,17 @@ log = logging.getLogger(__name__)
 
 
 def pick_device(prefer_cuda: bool = True) -> torch.device:
-    """CUDA > CPU. MPS is deliberately skipped (see module docstring)."""
+    """CUDA > CPU. MPS is opt-in via env (SRA_ALLOW_MPS=1) for local Mac runs.
+
+    Default behaviour is unchanged (CUDA on H100, CPU otherwise). Set
+    ``SRA_ALLOW_MPS=1`` to use Apple-GPU acceleration locally; fp16 stays off on
+    MPS (CUDA-only here), so the forward/backward runs in fp32.
+    """
+    import os
     if prefer_cuda and torch.cuda.is_available():
         return torch.device("cuda")
+    if os.environ.get("SRA_ALLOW_MPS") == "1" and torch.backends.mps.is_available():
+        return torch.device("mps")
     return torch.device("cpu")
 
 

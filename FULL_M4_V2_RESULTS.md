@@ -502,3 +502,161 @@ _Decision rule applied per the validation plan §12; see `IMPLEMENTATION_NOTES.m
 - The final L6 model is saved at `results/models/l6_ltr_final.txt` (+ `.features.json`); training data in `data/l6_final/`, CE training data in `data/ce_train/`.
 - L6 final config (dev-tuned): `{'num_leaves': 31, 'learning_rate': 0.03, 'n_estimators': 500, 'min_data_in_leaf': 30, 'best_iteration': 322}`.
 
+## 21. Standalone CE (raw-corpus, SkillRouter-style) — query_gen-test
+
+First stage retrieves from the **FULL 26,262-skill corpus** (no M4 @100 pool); CE-Raw reranks the top-1000 with **pure CE scores (no fusion)**. CE-Raw is trained on full-corpus-mined negatives (data/ce_raw/), so it is decoupled from Stage-1 in BOTH training and inference. Same held-out query_gen-test (1,079) as §20.
+
+### 21.1 Macro (%) — CE-Raw variants (+ §20 context rows)
+
+| Method | Type | R@1 | R@5 | R@10 | R@50 | R@100 | nD@1 | nD@5 | nD@10 |
+|---|---|---|---|---|---|---|---|---|---|
+| bge_base (retriever-only) | retriever | 28.38 | 49.54 | 57.48 | 77.77 | 84.63 | 34.58 | 42.17 | 45.12 |
+| CE-Raw·bge_base@1000 | standalone-CE | 33.77 | 60.97 | 69.35 | 87.73 | 91.70 | 43.70 | 52.13 | 55.22 |
+| rrf (retriever-only) | retriever | 35.83 | 59.96 | 69.33 | 87.64 | 92.80 | 43.26 | 51.67 | 55.08 |
+| CE-Raw·rrf@1000 | standalone-CE | 34.07 | 62.47 | 71.71 | 89.79 | 93.57 | 44.01 | 53.12 | 56.48 |
+| bge_ft (retriever-only) | retriever | 55.07 | 79.66 | 86.95 | 98.45 | 99.49 | 66.14 | 72.45 | 75.13 |
+| CE-Raw·bge_ft@1000 | standalone-CE | 32.36 | 58.23 | 67.18 | 87.64 | 93.33 | 41.91 | 49.82 | 53.08 |
+| L6-final (LTR) (§20) | supervised | 48.34 | 70.10 | 81.07 | 95.78 | 97.10 | 57.71 | 63.47 | 67.43 |
+| BM25 (§20) | zero-shot | 39.73 | 58.43 | 65.87 | 83.53 | 83.53 | 47.07 | 51.98 | 54.82 |
+| BGE (§20) | zero-shot | 28.48 | 49.80 | 57.69 | 78.69 | 85.27 | 35.03 | 42.66 | 45.52 |
+| RRF(BM25+BGE) (§20) | zero-shot | 35.92 | 60.18 | 70.19 | 88.37 | 93.04 | 43.68 | 52.00 | 55.51 |
+| M5-CE@500 (§20) | supervised(CE) | 39.17 | 65.82 | 76.94 | 91.79 | 94.00 | 48.93 | 57.36 | 61.44 |
+| M7-CE@500 (§20) | supervised(CE) | 45.74 | 75.41 | 84.92 | 94.44 | 96.37 | 56.04 | 65.95 | 69.42 |
+
+### 21.2 Per-dataset nDCG@10 (%) — CE-Raw variants
+
+| Method | theoremqa | logicbench | toolqa | champ | medcalcbench | bigcodebench | AVG |
+|---|---|---|---|---|---|---|---|
+| CE-Raw·bge_base@1000 | 54.89 | 49.10 | 87.95 | 16.10 | 35.64 | 87.64 | 55.22 |
+| CE-Raw·rrf@1000 | 54.89 | 55.37 | 88.88 | 15.92 | 36.05 | 87.74 | 56.48 |
+| CE-Raw·bge_ft@1000 | 51.16 | 54.55 | 87.05 | 14.33 | 27.05 | 84.35 | 53.08 |
+
+### 21.3 Significance (paired bootstrap vs held-out CE)
+
+| Comparison | Metric | Δ (pp) | 95% CI | p |
+|---|---|---|---|---|
+| CE-Raw·rrf@1000 vs M7-CE@500 | Recall@10 | -9.05 | [-10.97,-7.16] | 0.0 |
+| CE-Raw·rrf@1000 vs M7-CE@500 | nDCG@10 | -10.33 | [-11.75,-8.86] | 0.0 |
+| CE-Raw·rrf@1000 vs M5-CE@500 | Recall@10 | -3.67 | [-5.12,-2.24] | 0.0 |
+| CE-Raw·rrf@1000 vs M5-CE@500 | nDCG@10 | -4.07 | [-5.16,-2.98] | 0.0 |
+
+### 21.4 Reading
+
+- CE-Raw is a **standalone retrieve-and-rerank** (SkillRouter recipe) — different category from pipeline-CE (M5/M7, which rerank the M4 pool). Compare ceilings via retriever-only R@100.
+- First-stage recall bounds CE-Raw (reranker can't recover gold outside the shortlist); rerank-depth=1000.
+
+## 22. Unified Fair Comparison — all methods + CE-Raw (query_gen-test)
+
+Every row is evaluated on the **same held-out `query_gen-test` (1079 queries)** with the same metric aggregation (`evaluate.eval_variant`). Supervised rankers are final-fit / held-out: **L6-final** is trained on `query_gen-train`(+dev); **CE (M5/M7, ce-joint-v3)** on `query_gen-train`; **CE-Raw** on full-corpus-mined negatives (data/ce_raw/), reranking the full-corpus top-1000 with no fusion. Zero-shot (BM25/BGE/RRF) and unsupervised (M4/A7/QSC) need no training. → a fair, leakage-free, same-test comparison across **all** methods. Sources: §20 (`fair_supervised_query_gen.json`) + §21 (`ceraw_query_gen.json`).
+
+### 22.1 Macro (%) on query_gen-test
+
+| Method | Type | R@1 | R@5 | R@10 | R@50 | R@100 | nD@1 | nD@5 | nD@10 |
+|---|---|---|---|---|---|---|---|---|---|
+| BM25 | zero-shot | 39.73 | 58.43 | 65.87 | 83.53 | 83.53 | 47.07 | 51.98 | 54.82 |
+| BGE | zero-shot | 28.48 | 49.80 | 57.69 | 78.69 | 85.27 | 35.03 | 42.66 | 45.52 |
+| RRF(BM25+BGE) | zero-shot | 35.92 | 60.18 | 70.19 | 88.37 | 93.04 | 43.68 | 52.00 | 55.51 |
+| A1 M4 | unsupervised | 34.30 | 59.80 | 69.05 | 89.34 | 92.80 | 41.34 | 50.76 | 54.12 |
+| A7 PRF | unsupervised | 33.54 | 59.94 | 69.65 | 89.92 | 94.35 | 40.51 | 50.60 | 54.09 |
+| Q6 QSC | unsupervised | 33.41 | 59.90 | 69.65 | 89.92 | 94.35 | 40.14 | 50.41 | 53.92 |
+| A0 RRF | unsupervised | 35.03 | 60.04 | 69.33 | 87.66 | 92.80 | 42.56 | 51.44 | 54.81 |
+| Q2 QSC | unsupervised | 36.13 | 60.01 | 69.33 | 87.66 | 92.80 | 43.78 | 51.75 | 55.14 |
+| L6-final (LTR) | supervised | 48.34 | 70.10 | 81.07 | 95.78 | 97.10 | 57.71 | 63.47 | 67.43 |
+| M5-CE@100 | supervised(CE) | 41.54 | 68.94 | 78.28 | 90.28 | 92.80 | 51.41 | 60.35 | 63.67 |
+| M7-CE@100 | supervised(CE) | 46.54 | 74.07 | 83.12 | 91.46 | 92.80 | 56.88 | 65.77 | 68.99 |
+| M5-CE@500 | supervised(CE) | 39.17 | 65.82 | 76.94 | 91.79 | 94.00 | 48.93 | 57.36 | 61.44 |
+| M7-CE@500 | supervised(CE) | 45.74 | 75.41 | 84.92 | 94.44 | 96.37 | 56.04 | 65.95 | 69.42 |
+| CE-Raw·bge_base@1000 | standalone-CE | 33.77 | 60.97 | 69.35 | 87.73 | 91.70 | 43.70 | 52.13 | 55.22 |
+| CE-Raw·rrf@1000 | standalone-CE | 34.07 | 62.47 | 71.71 | 89.79 | 93.57 | 44.01 | 53.12 | 56.48 |
+| CE-Raw·bge_ft@1000 | standalone-CE | 32.36 | 58.23 | 67.18 | 87.64 | 93.33 | 41.91 | 49.82 | 53.08 |
+
+### 22.2 Per-dataset Recall@1 (%)
+
+| Method | theoremqa | logicbench | toolqa | champ | medcalcbench | bigcodebench | AVG |
+|---|---|---|---|---|---|---|---|
+| BM25 | 71.14 | 20.39 | 44.06 | 26.52 | 57.73 | 18.57 | 39.73 |
+| BGE | 67.79 | 7.24 | 25.52 | 11.93 | 35.91 | 22.52 | 28.48 |
+| RRF(BM25+BGE) | 67.79 | 14.47 | 43.01 | 18.37 | 48.64 | 23.27 | 35.92 |
+| A1 M4 | 67.79 | 15.79 | 34.27 | 18.37 | 48.64 | 20.93 | 34.30 |
+| A7 PRF | 68.46 | 15.13 | 31.47 | 18.37 | 47.27 | 20.53 | 33.54 |
+| Q6 QSC | 69.13 | 14.47 | 31.12 | 16.48 | 48.18 | 21.07 | 33.41 |
+| A0 RRF | 68.46 | 16.45 | 39.51 | 16.10 | 46.82 | 22.83 | 35.03 |
+| Q2 QSC | 69.80 | 17.11 | 41.26 | 17.23 | 47.73 | 23.63 | 36.13 |
+| L6-final (LTR) | 75.17 | 26.97 | 80.42 | 19.70 | 60.45 | 27.34 | 48.34 |
+| M5-CE@100 | 53.02 | 33.55 | 84.27 | 13.07 | 31.82 | 33.52 | 41.54 |
+| M7-CE@100 | 63.09 | 34.21 | 84.62 | 22.73 | 40.00 | 34.61 | 46.54 |
+| M5-CE@500 | 44.97 | 31.58 | 82.87 | 11.36 | 32.27 | 31.94 | 39.17 |
+| M7-CE@500 | 61.74 | 37.50 | 86.71 | 16.48 | 37.27 | 34.76 | 45.74 |
+| CE-Raw·bge_base@1000 | 43.62 | 25.00 | 75.87 | 4.73 | 20.91 | 32.46 | 33.77 |
+| CE-Raw·rrf@1000 | 43.62 | 28.29 | 76.22 | 2.46 | 21.36 | 32.46 | 34.07 |
+| CE-Raw·bge_ft@1000 | 40.94 | 28.95 | 70.98 | 2.46 | 19.55 | 31.31 | 32.36 |
+
+### 22.3 Per-dataset Recall@10 (%)
+
+| Method | theoremqa | logicbench | toolqa | champ | medcalcbench | bigcodebench | AVG |
+|---|---|---|---|---|---|---|---|
+| BM25 | 88.59 | 42.76 | 77.62 | 47.54 | 83.64 | 55.07 | 65.87 |
+| BGE | 85.91 | 21.05 | 73.08 | 38.26 | 65.45 | 62.40 | 57.69 |
+| RRF(BM25+BGE) | 89.93 | 48.68 | 87.41 | 50.00 | 79.55 | 65.58 | 70.19 |
+| A1 M4 | 89.93 | 43.42 | 86.71 | 49.24 | 80.00 | 64.98 | 69.05 |
+| A7 PRF | 90.60 | 46.71 | 86.71 | 49.24 | 80.00 | 64.65 | 69.65 |
+| Q6 QSC | 90.60 | 46.71 | 86.71 | 49.24 | 80.00 | 64.65 | 69.65 |
+| A0 RRF | 90.60 | 46.05 | 86.71 | 46.97 | 80.00 | 65.61 | 69.33 |
+| Q2 QSC | 90.60 | 46.05 | 86.71 | 46.97 | 80.00 | 65.61 | 69.33 |
+| L6-final (LTR) | 90.60 | 74.34 | 95.45 | 53.22 | 88.64 | 84.19 | 81.07 |
+| M5-CE@100 | 82.55 | 75.00 | 94.41 | 57.01 | 70.45 | 90.23 | 78.28 |
+| M7-CE@100 | 85.91 | 75.00 | 94.41 | 69.70 | 82.27 | 91.44 | 83.12 |
+| M5-CE@500 | 73.15 | 86.84 | 97.55 | 42.05 | 67.27 | 94.77 | 76.94 |
+| M7-CE@500 | 82.55 | 87.50 | 97.55 | 64.96 | 80.45 | 96.48 | 84.92 |
+| CE-Raw·bge_base@1000 | 67.11 | 77.63 | 96.50 | 25.38 | 54.09 | 95.37 | 69.35 |
+| CE-Raw·rrf@1000 | 67.11 | 87.50 | 97.90 | 27.65 | 54.55 | 95.52 | 71.71 |
+| CE-Raw·bge_ft@1000 | 65.10 | 83.55 | 100.00 | 23.11 | 38.18 | 93.13 | 67.18 |
+
+### 22.4 Per-dataset nDCG@1 (%)
+
+| Method | theoremqa | logicbench | toolqa | champ | medcalcbench | bigcodebench | AVG |
+|---|---|---|---|---|---|---|---|
+| BM25 | 71.14 | 20.39 | 44.06 | 38.64 | 57.73 | 50.44 | 47.07 |
+| BGE | 67.79 | 7.24 | 25.52 | 13.64 | 35.91 | 60.09 | 35.03 |
+| RRF(BM25+BGE) | 67.79 | 14.47 | 43.01 | 25.00 | 48.64 | 63.16 | 43.68 |
+| A1 M4 | 67.79 | 15.79 | 34.27 | 25.00 | 48.64 | 56.58 | 41.34 |
+| A7 PRF | 68.46 | 15.13 | 31.47 | 25.00 | 47.27 | 55.70 | 40.51 |
+| Q6 QSC | 69.13 | 14.47 | 31.12 | 20.45 | 48.18 | 57.46 | 40.14 |
+| A0 RRF | 68.46 | 16.45 | 39.51 | 22.73 | 46.82 | 61.40 | 42.56 |
+| Q2 QSC | 69.80 | 17.11 | 41.26 | 22.73 | 47.73 | 64.04 | 43.78 |
+| L6-final (LTR) | 75.17 | 26.97 | 80.42 | 29.55 | 60.45 | 73.68 | 57.71 |
+| M5-CE@100 | 53.02 | 33.55 | 84.27 | 15.91 | 31.82 | 89.91 | 51.41 |
+| M7-CE@100 | 63.09 | 34.21 | 84.62 | 27.27 | 40.00 | 92.11 | 56.88 |
+| M5-CE@500 | 44.97 | 31.58 | 82.87 | 15.91 | 32.27 | 85.96 | 48.93 |
+| M7-CE@500 | 61.74 | 37.50 | 86.71 | 20.45 | 37.27 | 92.54 | 56.04 |
+| CE-Raw·bge_base@1000 | 43.62 | 25.00 | 75.87 | 9.09 | 20.91 | 87.72 | 43.70 |
+| CE-Raw·rrf@1000 | 43.62 | 28.29 | 76.22 | 6.82 | 21.36 | 87.72 | 44.01 |
+| CE-Raw·bge_ft@1000 | 40.94 | 28.95 | 70.98 | 6.82 | 19.55 | 84.21 | 41.91 |
+
+### 22.5 Per-dataset nDCG@10 (%)
+
+| Method | theoremqa | logicbench | toolqa | champ | medcalcbench | bigcodebench | AVG |
+|---|---|---|---|---|---|---|---|
+| BM25 | 79.97 | 29.90 | 61.88 | 40.29 | 69.39 | 47.49 | 54.82 |
+| BGE | 75.38 | 13.38 | 51.36 | 27.53 | 49.65 | 55.81 | 45.52 |
+| RRF(BM25+BGE) | 79.27 | 29.18 | 67.23 | 35.53 | 62.91 | 58.90 | 55.51 |
+| A1 M4 | 79.19 | 28.54 | 62.37 | 34.89 | 62.99 | 56.72 | 54.12 |
+| A7 PRF | 79.83 | 29.88 | 61.27 | 34.87 | 62.42 | 56.28 | 54.09 |
+| Q6 QSC | 79.95 | 29.64 | 61.09 | 33.64 | 62.65 | 56.54 | 53.92 |
+| A0 RRF | 80.13 | 29.50 | 65.98 | 32.89 | 62.18 | 58.21 | 54.81 |
+| Q2 QSC | 80.49 | 29.74 | 66.71 | 32.89 | 62.46 | 58.55 | 55.14 |
+| L6-final (LTR) | 82.90 | 47.67 | 89.06 | 37.25 | 73.98 | 73.73 | 67.43 |
+| M5-CE@100 | 67.19 | 54.56 | 90.45 | 34.93 | 48.63 | 86.24 | 63.67 |
+| M7-CE@100 | 73.99 | 55.31 | 90.54 | 47.11 | 59.24 | 87.76 | 68.99 |
+| M5-CE@500 | 59.35 | 57.95 | 91.72 | 26.41 | 47.09 | 86.11 | 61.44 |
+| M7-CE@500 | 71.81 | 61.59 | 93.20 | 42.20 | 57.13 | 90.58 | 69.42 |
+| CE-Raw·bge_base@1000 | 54.89 | 49.10 | 87.95 | 16.10 | 35.64 | 87.64 | 55.22 |
+| CE-Raw·rrf@1000 | 54.89 | 55.37 | 88.88 | 15.92 | 36.05 | 87.74 | 56.48 |
+| CE-Raw·bge_ft@1000 | 51.16 | 54.55 | 87.05 | 14.33 | 27.05 | 84.35 | 53.08 |
+
+### 22.6 Reading
+
+- All methods share the identical test queries and aggregation, so columns are directly comparable. Categories still differ in supervision (**supervised**: L6-final, CE, CE-Raw; **zero-shot**: BM25/BGE/RRF; **unsupervised**: M4/A7/QSC) — compare within intent.
+- **CE-Raw vs pipeline-CE (M5/M7):** CE-Raw is decoupled from the M4 Stage-1 in BOTH training and inference (full-corpus retrieve→rerank top-1000); M5/M7 rerank the M4 pool. The gap isolates the cost of dropping the strong M4 first stage (see §21 retriever ceilings).
+- Per-dataset retriever ceilings (R@100) for CE-Raw are in §21.1; CE-Raw cannot recover gold outside its first-stage shortlist.
+

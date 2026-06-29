@@ -48,10 +48,41 @@ ls results/m4_v2/cache/query_emb/*.npy
 ls results/qsc_ltr/ce500/*.jsonl results/qsc_ltr/m5_500/*.jsonl results/comparisons/fair_supervised_query_gen.json
 ```
 
-Python deps (GPU box): `torch` (CUDA), `transformers`, `sentence-transformers>=2.2`, `numpy`,
+Python deps (GPU box): `torch` (CUDA), `transformers`, `sentence-transformers>=2.2`,
+`datasets` (required by ST's `.fit()` in Phase B — `pip install datasets`), `numpy`,
 `scipy`, `pyyaml`. Base checkpoints are downloaded from HuggingFace on first use
 (`cross-encoder/ms-marco-MiniLM-L-6-v2`, `BAAI/bge-base-en-v1.5`) — keep HF **online** for the
 first run (do NOT set `HF_HUB_OFFLINE=1` until they're cached).
+
+## 1b. Local execution on a Mac (Apple-GPU / MPS)
+
+The whole pipeline runs locally without CUDA. The trainer/reranker/eval default to
+CUDA-or-CPU (MPS off, since it was historically unstable for CE). Set **`SRA_ALLOW_MPS=1`**
+to opt into Apple-GPU acceleration — this is the only change vs the H100 commands, and it is
+a no-op on machines with CUDA (CUDA always wins) so the same scripts run unchanged on H100.
+
+```bash
+export PYTHONPATH=src SRA_ALLOW_MPS=1 TOKENIZERS_PARALLELISM=false PYTORCH_ENABLE_MPS_FALLBACK=1
+```
+
+Observed on an M-series (~64 GB unified): Phase 2 ≈ 25 min, Phase B ≈ 18 min, deep eval
+(3 retrievers @1000) ≈ 2 h. **MPS memory caps matter for Phase B** — bge-base at the default
+512 seq-len OOMs the unified pool; pass the memory-safe flags:
+
+```bash
+SRA_ALLOW_MPS=1 python src/kmeans/scripts/ceraw_train_retriever.py \
+    --epochs 2 --batch-size 16 --max-negs 4 --max-seq-length 256 \
+    --out results/models/sr-emb-bge-v1
+```
+
+On CUDA you can drop these flags (use the §4 batch 64 defaults). fp16 stays CUDA-only;
+MPS runs fp32.
+
+> Note: the trainer (`train_cross_encoder.py`) and the eval/retriever scripts are tracked and
+> carry the `SRA_ALLOW_MPS` gate. The eval **reranker** lives in
+> `src/sragents/retrieve/cross_rerank.py`, which is git-ignored in this repo (`.gitignore`),
+> so its MPS gate is a local-only patch — H100/CUDA is unaffected (CUDA never takes the MPS
+> branch); a fresh *local* clone wanting MPS during eval must re-apply that one-line gate.
 
 ## 2. Phase 1 — build the raw dataset (CPU, ~2–5 min)
 
@@ -97,6 +128,21 @@ python src/kmeans/scripts/ceraw_eval.py \
   `FULL_M4_V2_RESULTS.md` (CE-Raw·bge_base / ·rrf / ·bge_ft + retriever-only rows + §20
   context rows + significance vs held-out M5/M7-CE@500).
 
+## 5b. §22 — unified fair comparison vs ALL methods (no GPU, ~5 s)
+
+After §20 (`run_fair_eval.py`) and §21 (`ceraw_eval.py`) have both written their JSONs,
+merge them into one fair table — CE-Raw vs every other method on the **same query_gen-test**,
+with the four per-dataset tables (Recall@1, Recall@10, nDCG@1, nDCG@10) + macro:
+
+```bash
+python src/kmeans/scripts/unified_compare.py     # appends §22 to FULL_M4_V2_RESULTS.md
+```
+
+Reads `results/comparisons/{fair_supervised_query_gen,ceraw_query_gen}.json` (no re-eval), so
+it is safe to re-run after any new §21 eval. **Run order matters:** §21 must be written before
+§22 (the §21 writer truncates everything from `## 21.` onward, which would drop a pre-existing
+§22). Outputs `results/comparisons/unified_query_gen.{json,md}` + §22.
+
 ## 6. Smoke test first (recommended, ~2 min on GPU)
 
 Catch wiring issues before the full run:
@@ -107,14 +153,29 @@ python src/kmeans/scripts/ceraw_eval.py --retrievers bge_base --rerank-depth 100
 ```
 If §21 appears with sane numbers, run the full Phase 2/B/3 above.
 
-## 7. Expectations (honest)
+## 7. Results (measured — local M-series/MPS run, query_gen-test, depth 1000)
 
-- First-stage recall **bounds** CE-Raw (the reranker cannot recover gold outside the shortlist).
-  Per §20, full-corpus **BGE R@100 ≈ 85%**, **RRF ≈ 93%**, vs the M4 pool ~96%. So expect
-  **CE-Raw·bge_base < M5/M7**; **CE-Raw·rrf** (and Phase-B **bge_ft**, which should lift recall)
-  are the fair comparisons. Report retriever-only R@100 next to nDCG@10 to show the ceiling.
-- This experiment measures the **cost of decoupling from the strong M4 stage-1** and whether a
-  SkillRouter-style standalone CE is competitive on our 26K-skill pool.
+First-stage recall **bounds** CE-Raw (the reranker cannot recover gold outside the shortlist):
+
+| First stage | retriever R@100 | → CE-Raw nDCG@10 |
+|---|---|---|
+| bge_base | 84.63 | 55.22 |
+| rrf | 92.80 | **56.48** (best CE-Raw) |
+| **bge_ft** (Phase B) | **99.49** | 53.08 |
+
+Reference lines on the same test: **L6-final nDCG@10 = 67.43**, **M7-CE@500 = 69.42**,
+**M5-CE@500 = 61.44** (full unified table = §22).
+
+Takeaways (honest):
+- **Phase-B fine-tuning works as a retriever**: bge_ft lifts first-stage R@100 to **99.5%**
+  (>> bge_base 84.6%, rrf 92.8%, even > the M4 pool ~96%). The SkillRouter encoder stage is the win.
+- **But CE-Raw·bge_ft's nDCG@10 is *lower*** despite the higher recall: the cross-encoder was
+  trained on bm25/bge/cluster negatives, so it ranks poorly inside bge_ft's much harder/broader
+  top-1000. To realize bge_ft's recall, retrain the CE with **bge_ft-mined hard negatives**
+  (re-run Phase 1 sourcing from `sr-emb-bge-v1`, then Phase 2). CE-Raw·**rrf** is the best CE-Raw today.
+- CE-Raw (standalone) trails pipeline-CE (M5/M7, which rerank the strong M4 @500 pool):
+  CE-Raw·rrf vs M7-CE@500 is **−10.3 pp nDCG@10** (p≈0, §21.3). This quantifies the **cost of
+  decoupling from the M4 Stage-1** — the core question this experiment answers.
 
 ## Files
 
@@ -125,3 +186,4 @@ If §21 appears with sane numbers, run the full Phase 2/B/3 above.
 | `src/kmeans/scripts/ceraw_train_ce.py` | 2 — train CE-Raw | GPU |
 | `src/kmeans/scripts/ceraw_train_retriever.py` | B — fine-tune retriever | GPU |
 | `src/kmeans/scripts/ceraw_eval.py` | 3+4 — eval + §21 | GPU |
+| `src/kmeans/scripts/unified_compare.py` | 5b — merge §20+§21 → §22 (all methods) | CPU |

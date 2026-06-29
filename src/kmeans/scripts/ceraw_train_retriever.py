@@ -29,6 +29,17 @@ from sragents.corpus import load_corpus_dict
 DATA = PROJECT_ROOT / "data" / "ce_raw"
 
 
+def _device() -> str:
+    """CUDA > MPS (opt-in via SRA_ALLOW_MPS=1) > CPU."""
+    import os
+    import torch
+    if torch.cuda.is_available():
+        return "cuda"
+    if os.environ.get("SRA_ALLOW_MPS") == "1" and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
 def skill_text(s: dict, cap: int = 2500) -> str:
     return f"{s.get('name','')} | {s.get('description','')} | {str(s.get('content',''))[:cap]}"
 
@@ -41,6 +52,8 @@ def main() -> None:
     ap.add_argument("--epochs", type=int, default=2)
     ap.add_argument("--batch-size", type=int, default=64)
     ap.add_argument("--max-negs", type=int, default=6, help="hard negatives per anchor in the InputExample")
+    ap.add_argument("--max-seq-length", type=int, default=256,
+                    help="encoder truncation length; caps MPS/CUDA attention memory (bge default 512 OOMs on MPS)")
     ap.add_argument("--warmup-ratio", type=float, default=0.1)
     args = ap.parse_args()
     if not args.triples.exists():
@@ -63,9 +76,11 @@ def main() -> None:
             texts = [t["query"], skill_text(pos)] + [skill_text(n) for n in negs]
             if len(texts) >= 2:
                 examples.append(InputExample(texts=texts))
-    print(f"[retriever] {len(examples)} training anchors | base={args.base} -> {args.out}", flush=True)
+    dev = _device()
+    print(f"[retriever] {len(examples)} training anchors | base={args.base} device={dev} -> {args.out}", flush=True)
 
-    model = SentenceTransformer(args.base)
+    model = SentenceTransformer(args.base, device=dev)
+    model.max_seq_length = args.max_seq_length
     loader = DataLoader(examples, shuffle=True, batch_size=args.batch_size)
     loss = losses.MultipleNegativesRankingLoss(model)  # in-batch InfoNCE + provided hard negs
     steps = max(1, len(loader) * args.epochs)

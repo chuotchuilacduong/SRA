@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from pathlib import Path
 
 import _bootstrap  # noqa: F401
@@ -27,6 +28,7 @@ DATA = PROJECT_ROOT / "data" / "ce_raw"
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     ap = argparse.ArgumentParser(description="Train CE-Raw (listwise, full-corpus negatives)")
     ap.add_argument("--config", type=Path, default=PROJECT_ROOT / "src/kmeans/configs/ceraw_listwise.yaml")
     ap.add_argument("--train-pairs", type=Path, default=DATA / "ce_pairs_train.json")

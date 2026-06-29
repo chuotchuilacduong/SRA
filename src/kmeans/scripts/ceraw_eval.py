@@ -40,8 +40,13 @@ def _md(headers, rows):
 
 
 def _device():
+    import os
     import torch
-    return "cuda" if torch.cuda.is_available() else "cpu"
+    if torch.cuda.is_available():
+        return "cuda"
+    if os.environ.get("SRA_ALLOW_MPS") == "1" and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
 
 
 def load_corpus_matrix():
@@ -99,7 +104,7 @@ def first_stage(name, datasets, test_by_ds, corpus_emb, corpus_ids, depth, ce_mo
             corpus = load_corpus_dict()
             texts = [f"{corpus[s].get('name','')} | {corpus[s].get('description','')} | "
                      f"{str(corpus[s].get('content',''))[:2500]}" for s in corpus_ids]
-            ce_emb = st.encode(texts, batch_size=256, normalize_embeddings=True, show_progress_bar=True)
+            ce_emb = st.encode(texts, batch_size=128, normalize_embeddings=True, show_progress_bar=True)
             np.save(cache, ce_emb)
         instances = {r["instance_id"]: r["query"] for ds in datasets for r in io.load_instances(load_ext()[1], ds)}
         for ds in datasets:
