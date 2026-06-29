@@ -279,6 +279,25 @@ def phase4_report(ext, methods, sig, sizes, params):
     print("  wrote fair_supervised_query_gen.{csv,md,json} + appended §20")
 
 
+def export_retrieval_source(recs, source_name):
+    """Dump per-query ranked lists as a retrieval source for the end-task harness.
+
+    Writes results/retrieval/{ds}-{source_name}.json in the schema the
+    `sragents infer` topk/llm_select providers expect:
+        {"results":[{"instance_id","retrieved":[{"skill_id"},...]},...]}
+    (extra fields on each record are ignored by the providers).
+    """
+    out = PROJECT_ROOT / "results" / "retrieval"
+    out.mkdir(parents=True, exist_ok=True)
+    by = {}
+    for r in recs:
+        by.setdefault(r["dataset"], []).append(r)
+    for ds, rs in by.items():
+        (out / f"{ds}-{source_name}.json").write_text(json.dumps({"results": rs}))
+    print(f"  exported results/retrieval/{{ds}}-{source_name}.json for {len(by)} datasets "
+          f"({sum(len(v) for v in by.values())} queries)")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--grid", choices=["full", "moderate"], default="moderate")
@@ -294,6 +313,7 @@ def main():
 
     print("Phase 1: materialize /data ..."); phase1_materialize(ext, tables, train, dev, test)
     print("Phase 2: train final L6 ..."); l6_recs, params = phase2_train_l6(ext, cfg, tables, train, dev, test, GRIDS[args.grid])
+    export_retrieval_source(l6_recs, "l6_final")  # for end-task eval (results/retrieval/{ds}-l6_final.json)
     print("Phase 3: evaluate all on query_gen-test ..."); methods, sig = phase3_eval(ext, cfg, l6_recs, test, gold_by_id)
     for lbl, typ, ev, _ in methods:
         m = ev["macro"]

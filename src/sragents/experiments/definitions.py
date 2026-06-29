@@ -344,10 +344,61 @@ _MAIN_LINEARRAG = ExperimentSpec(
     ],
 )
 
+# End-task accuracy table for THIS repo's retrieval methods × skill-use
+# strategies, evaluated on query_gen-test (see plans/e2e_endtask_eval_h100.md).
+# Retrieval sources are materialized into results/retrieval/{ds}-{source}.json by:
+#   * bm25            — cached results/retrieval_bm25/{ds}-bm25.json (symlink/copy)
+#   * l6_final        — run_fair_eval.py export
+#   * ceraw_bge_base / ceraw_rrf / ceraw_bge_ft / bge_ft_retriever — ceraw_eval.py export
+# Mirrors _MAIN's 3 retrieval-dependent strategies per source + the 2
+# retrieval-independent baselines (llm_direct, oracle_skill), with the same
+# ToolQA engine overrides so ReAct is used for toolqa automatically.
+_ENDTASK_SOURCES = [
+    ("bm25", "BM25"),
+    ("l6_final", "L6_final"),
+    ("ceraw_bge_base", "CE-Raw·bge_base@1000"),
+    ("ceraw_rrf", "CE-Raw·rrf@1000"),
+    ("ceraw_bge_ft", "CE-Raw·bge_ft@1000"),
+    ("bge_ft_retriever", "bge_ft (retriever-only)"),
+]
+
+
+def _endtask_methods() -> list[Method]:
+    methods = [
+        Method(label="llm_direct", display_name="LLM Direct",
+               provider="none", engine="direct", engine_toolqa="react"),
+        Method(label="oracle_skill", display_name="Oracle Skill",
+               provider="oracle", engine="direct", engine_toolqa="react"),
+    ]
+    for src, disp in _ENDTASK_SOURCES:
+        methods += [
+            Method(label=f"fsi__{src}", display_name=f"Full-Skill Injection / {disp}",
+                   provider="topk", provider_args={"source": src, "k": 1},
+                   engine="direct", engine_toolqa="react"),
+            Method(label=f"sel__{src}", display_name=f"LLM Selection / {disp}",
+                   provider="llm_select", provider_args={"source": src, "pool": 50},
+                   engine="direct", engine_toolqa="react"),
+            Method(label=f"pd__{src}", display_name=f"Progressive Disclosure / {disp}",
+                   provider="topk", provider_args={"source": src, "k": 50},
+                   engine="progressive_disclosure",
+                   engine_toolqa="react_progressive_disclosure"),
+        ]
+    return methods
+
+
+_ENDTASK = ExperimentSpec(
+    name="endtask",
+    description="End-task accuracy: 5 skill-use strategies × 6 retrieval sources "
+                "(bm25, l6_final, ceraw_bge_base/rrf/bge_ft, bge_ft_retriever) on "
+                "query_gen-test. Use --instances-dir data/bench/instances_test.",
+    methods=_endtask_methods(),
+)
+
 EXPERIMENTS: dict[str, ExperimentSpec] = {
     e.name: e for e in (
         _MAIN, _MAIN_LINEARRAG, _RETRIEVAL,
         _TOPK_SWEEP, _TOPK_SWEEP_INJECTION_ONLY, _TOPK_SWEEP_PD_ONLY,
         _DISTRACTOR, _DISTRACTOR_INJECTION_ONLY, _DISTRACTOR_PD_ONLY,
+        _ENDTASK,
     )
 }

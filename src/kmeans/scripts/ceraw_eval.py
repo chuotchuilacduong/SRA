@@ -49,6 +49,33 @@ def _device():
     return "cpu"
 
 
+def export_endtask_sources(methods):
+    """Dump per-query ranked lists as retrieval sources for the end-task harness.
+
+    Writes results/retrieval/{ds}-{source}.json (schema {"results":[{instance_id,
+    retrieved:[{skill_id},...]},...]}) for the table methods:
+      CE-Raw·bge_base@* -> ceraw_bge_base, ·rrf -> ceraw_rrf, ·bge_ft -> ceraw_bge_ft,
+      bge_ft (retriever-only) -> bge_ft_retriever. Rerank depth in the label is ignored.
+    """
+    out = PROJECT_ROOT / "results" / "retrieval"
+    out.mkdir(parents=True, exist_ok=True)
+    written = []
+    for label, typ, _ev, recs in methods:
+        if typ == "standalone-CE" and "·" in label:
+            source = "ceraw_" + label.split("·", 1)[1].split("@", 1)[0]
+        elif typ == "retriever" and label.startswith("bge_ft"):
+            source = "bge_ft_retriever"
+        else:
+            continue
+        by = {}
+        for r in recs:
+            by.setdefault(r["dataset"], []).append(r)
+        for ds, rs in by.items():
+            (out / f"{ds}-{source}.json").write_text(json.dumps({"results": rs}))
+        written.append(source)
+    print(f"  exported end-task retrieval sources -> results/retrieval/: {written}", flush=True)
+
+
 def load_corpus_matrix():
     emb = np.load(PROJECT_ROOT / "results/bge/corpus_emb.npy").astype(np.float32)
     emb /= (np.linalg.norm(emb, axis=1, keepdims=True) + 1e-9)
@@ -175,6 +202,9 @@ def main() -> None:
                         [r for ds in datasets for r in reranked[ds]]))
         print(f"  {rname}: retriever R@100={_pct(methods[-2][2]['macro'],'Recall@100'):.2f} "
               f"-> CE-Raw nDCG@10={_pct(methods[-1][2]['macro'],'nDCG@10'):.2f}", flush=True)
+
+    # export ranked lists as retrieval sources for the end-task eval (results/retrieval/)
+    export_endtask_sources(methods)
 
     # significance: best CE-Raw vs M7@500 / M5@500 (held-out CE) on query_gen-test
     sig = {}
