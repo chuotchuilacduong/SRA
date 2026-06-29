@@ -56,3 +56,7 @@ slurm-*.out
 *.safetensors
 *.ckpt
 docs/
+
+# ignore the data/results roots themselves (real dir OR machine-specific symlink)
+/data
+/results

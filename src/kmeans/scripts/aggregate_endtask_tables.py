@@ -41,6 +41,7 @@ SOURCES = [
     ("ceraw_rrf", "CE-Raw·rrf@1000"),
     ("ceraw_bge_ft", "CE-Raw·bge_ft@1000"),
     ("bge_ft_retriever", "bge_ft (retriever-only)"),
+    ("l6_union_bgeft_k100", "L6-union-bgeft@100"),
 ]
 STRATS = [("fsi", "Full-Skill Injection"), ("sel", "LLM Selection"), ("pd", "Progressive Disclosure")]
 

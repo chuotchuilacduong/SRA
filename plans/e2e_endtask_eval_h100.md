@@ -8,9 +8,9 @@ scored by task correctness (BigCodeBench by unit-test execution). Table shape:
 Retrieval | Skill-use | theoremqa | logicbench | toolqa | champ | medcalcbench | bigcodebench | Average
 ```
 - **Skill-use (5):** LLM Direct, Oracle Skill, Full-Skill Injection, LLM Selection, Progressive Disclosure.
-- **Retrieval (6, only for the 3 retrieval-dependent strategies):** BM25, L6_final, CE-Raw·bge_base@1000, CE-Raw·rrf@1000, CE-Raw·bge_ft@1000, bge_ft (retriever-only).
+- **Retrieval (7, only for the 3 retrieval-dependent strategies):** BM25, L6_final, CE-Raw·bge_base@1000, CE-Raw·rrf@1000, CE-Raw·bge_ft@1000, bge_ft (retriever-only), **L6-union-bgeft@100** (the best reranker, §24: retrieval nDCG@10 82.23).
 - LLM Direct + Oracle Skill are retrieval-independent (`Retrieval = —`), computed once/model.
-- **20 cells/model** (2 + 6×3); **Average = instance-weighted** (Σcorrect/Σtotal over the 1,079).
+- **23 cells/model** (2 + 7×3); **Average = instance-weighted** (Σcorrect/Σtotal over the 1,079).
 
 The whole run is driven by one experiment: **`python -m sragents.cli.main experiment --exp endtask`**
 (no `sragents` console script is installed; invoke the module with `PYTHONPATH=src`). Added in
@@ -51,12 +51,19 @@ python src/kmeans/scripts/run_fair_eval.py --grid moderate
 python src/kmeans/scripts/ceraw_eval.py --retrievers bge_base,rrf,bge_ft \
     --rerank-depth 1000 --ce-model results/models/ce-raw-v1
 
+# L6-union-bgeft@100 (the best reranker, §24): build bge_ft features cache, then the union source.
+#   add_bgeft_features.py -> cache/ltr_features_bgeft/{ds}.npz + cache/query_emb_ft/{ds}.npy
+#   run_l6_union_bgeft.py --K 100 -> results/retrieval/{ds}-l6_union_bgeft_k100.json
+#   (needs results/models/sr-emb-bge-v1, results/bge/corpus_ids.json, cache/ltr_features/{ds}.npz)
+python src/kmeans/scripts/add_bgeft_features.py
+python src/kmeans/scripts/run_l6_union_bgeft.py --K 100
+
 # BM25 source = the cached file under the name the runner expects
 mkdir -p results/retrieval
 for ds in theoremqa logicbench toolqa champ medcalcbench bigcodebench; do
   ln -sf ../retrieval_bm25/$ds-bm25.json results/retrieval/$ds-bm25.json
 done
-ls results/retrieval/   # expect 6 datasets × 6 sources = 36 files
+ls results/retrieval/   # expect 6 datasets × 7 sources = 42 files
 ```
 
 ## 3. Stage B — test-only instances (no `--split` flag exists)
@@ -74,7 +81,7 @@ curl -s http://localhost:8000/v1/models   # health check
 ```
 `enable_thinking=false` is applied client-side automatically for `qwen3*` models (do NOT pass `--thinking`).
 
-## 5. Stage D — run all 20 cells per model (infer + evaluate)
+## 5. Stage D — run all 23 cells per model (infer + evaluate)
 ```bash
 # Qwen3-4B
 python -m sragents.cli.main experiment --exp endtask --model Qwen/Qwen3-4B \
@@ -133,13 +140,14 @@ the 3 retrieval-dependent strategies.
 3. **Qwen3-32B needs TP≥2** on 80 GB H100s (bf16 weights ~64 GB).
 4. **Context 32768** — bump `--max-model-len` to 65536 only if a long BigCodeBench prompt errors.
 5. **CE-Raw/bge_ft sources** require `results/models/{ce-raw-v1,sr-emb-bge-v1}` present; missing → those rows skip.
-6. Cost: 20 cells × 6 datasets × 2 models ≈ 43k instance-inferences (ReAct/PD multiply LLM *calls* per instance).
+6. Cost: 23 cells × 6 datasets × 2 models ≈ 50k instance-inferences (ReAct/PD multiply LLM *calls* per instance).
    Start with Qwen3-4B end-to-end, sanity-check the table, then run Qwen3-32B.
 
 ## Files (this plan)
 | File | Role |
 |---|---|
-| `src/sragents/experiments/definitions.py` | `endtask` spec (20 methods; engines/sources) |
+| `src/sragents/experiments/definitions.py` | `endtask` spec (23 methods; +l6_union_bgeft@100) |
+| `src/kmeans/scripts/{add_bgeft_features,run_l6_union_bgeft}.py` | build the l6_union_bgeft@100 source (Stage A) |
 | `src/kmeans/scripts/run_fair_eval.py` | exports `results/retrieval/{ds}-l6_final.json` |
 | `src/kmeans/scripts/ceraw_eval.py` | exports `{ds}-ceraw_{bge_base,rrf,bge_ft}.json` + `{ds}-bge_ft_retriever.json` |
 | `src/kmeans/scripts/make_test_instances.py` | `data/bench/instances_test/{ds}.json` (1,079) |
