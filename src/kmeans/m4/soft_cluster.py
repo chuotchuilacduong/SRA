@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .config import M4V2Config
-from .io import Artifacts
+from ..common.config import M4V2Config
+from ..common.io import Artifacts
 
 
 def _softmax(x: np.ndarray, axis: int = -1) -> np.ndarray:

@@ -1,32 +1,32 @@
 #!/usr/bin/env bash
 # End-task accuracy pipeline (Stage B -> E) for ONE model, on H100.
 # Runs: make test-instances -> serve vLLM (+wait) -> ToolQA probe -> `endtask`
-# experiment (all 20 cells, infer+evaluate) -> aggregate the 2 tables.
+# experiment (all 23 cells, infer+evaluate) -> aggregate the 2 tables.
 #
 # IMPORTANT: vLLM needs a GPU. On a SLURM cluster, run this INSIDE a GPU
 # allocation, e.g.:  srun --gres=gpu:2 --pty bash  then run this script.
 # (login nodes have no GPU.) Qwen3-32B needs tensor-parallel >= 2.
 #
 # Usage (from repo root or anywhere):
-#   bash src/kmeans/scripts/run_endtask_h100.sh Qwen/Qwen3-4B  8000 1
-#   bash src/kmeans/scripts/run_endtask_h100.sh Qwen/Qwen3-32B 8001 2
-#   bash src/kmeans/scripts/run_endtask_h100.sh --aggregate          # just build tables
+#   bash src/kmeans/scripts/analysis/run_endtask_h100.sh Qwen/Qwen3-4B  8000 1
+#   bash src/kmeans/scripts/analysis/run_endtask_h100.sh Qwen/Qwen3-32B 8001 2
+#   bash src/kmeans/scripts/analysis/run_endtask_h100.sh --aggregate          # just build tables
 #
 # Env knobs (defaults): MAXLEN=32768 WORKERS=32 EVAL_WORKERS=8
 #   READY_TIMEOUT=1200 KEEP_SERVER=0 SKIP_PROBE=0
 #   NO_SERVE=0   # set 1 if you start vLLM yourself (script then just waits on $PORT)
 set -uo pipefail
 
-cd "$(dirname "$0")/../../.."          # src/kmeans/scripts -> repo root
+cd "$(dirname "$0")/../../../.."        # src/kmeans/scripts/analysis -> repo root
 export PYTHONPATH=src
 PY="python -m sragents.cli.main"
 DATASETS="theoremqa logicbench toolqa champ medcalcbench bigcodebench"
-SOURCES="bm25 l6_final ceraw_bge_base ceraw_rrf ceraw_bge_ft bge_ft_retriever"
+SOURCES="bm25 l6_final ceraw_bge_base ceraw_rrf ceraw_bge_ft bge_ft_retriever l6_union_bgeft_k100"
 MAXLEN=${MAXLEN:-32768}; WORKERS=${WORKERS:-32}; EVAL_WORKERS=${EVAL_WORKERS:-8}
 READY_TIMEOUT=${READY_TIMEOUT:-1200}; KEEP_SERVER=${KEEP_SERVER:-0}
 SKIP_PROBE=${SKIP_PROBE:-0}; NO_SERVE=${NO_SERVE:-0}
 
-aggregate() { python src/kmeans/scripts/aggregate_endtask_tables.py --models Qwen3-4B Qwen3-32B; }
+aggregate() { python src/kmeans/scripts/analysis/aggregate_endtask_tables.py --models Qwen3-4B Qwen3-32B; }
 
 if [ "${1:-}" = "--aggregate" ]; then aggregate; exit 0; fi
 
@@ -37,15 +37,15 @@ SHORT=$(basename "$MODEL")
 BASE="http://localhost:$PORT/v1"
 
 echo "==[Stage B] test-only instances (expect TOTAL 1079) =="
-python src/kmeans/scripts/make_test_instances.py
+python src/kmeans/scripts/analysis/make_test_instances.py
 
 echo "==[pre-flight] retrieval sources present? =="
 miss=0
 for ds in $DATASETS; do for s in $SOURCES; do
   [ -e "results/retrieval/$ds-$s.json" ] || { echo "  MISSING results/retrieval/$ds-$s.json"; miss=1; }
 done; done
-[ $miss -eq 0 ] && echo "  all 36 sources present" \
-  || echo "  [warn] missing sources above -> those cells get skipped. Run Stage A first (run_fair_eval.py, ceraw_eval.py, bm25 symlinks)."
+[ $miss -eq 0 ] && echo "  all 42 sources present (7 sources × 6 datasets)" \
+  || echo "  [warn] missing above -> those cells skipped. Run Stage A first (run_fair_eval.py, ceraw_eval.py, add_bgeft_features.py, run_l6_union_bgeft.py, bm25 symlinks)."
 
 VLLM_PID=""
 cleanup() { if [ -n "$VLLM_PID" ] && [ "$KEEP_SERVER" != "1" ]; then
@@ -94,7 +94,7 @@ PY
   echo "  ^ Observation phải là output tool thật (KHÔNG 'is not in the list' / 'Error executing'). Ctrl-C nếu sai."
 fi
 
-echo "==[Stage D] endtask experiment — $MODEL (20 cells × 6 datasets; resume-safe) =="
+echo "==[Stage D] endtask experiment — $MODEL (23 cells × 6 datasets; resume-safe) =="
 $PY experiment --exp endtask --model "$MODEL" --api-base "$BASE" \
   --instances-dir data/bench/instances_test \
   --workers "$WORKERS" --eval-workers "$EVAL_WORKERS" --temperature 0.7 --max-tokens 4096

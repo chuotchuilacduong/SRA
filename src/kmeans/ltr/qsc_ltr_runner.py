@@ -17,13 +17,15 @@ import yaml
 
 from sragents.config import PROJECT_ROOT
 
-from .config import M4V2Config
-from .soft_cluster import SoftClusterIndex
-from .ablation_runner import load_artifacts_cached
+from ..common.config import M4V2Config
+from ..m4.soft_cluster import SoftClusterIndex
+from ..m4.ablation_runner import load_artifacts_cached
 from .base_table import iter_base_table
 from .qsc import build_local_clustering, score_one
 from .ltr_features import FeatureAccumulator, save_features
-from . import io, embeddings, cluster_stats, evaluate, ltr
+from ..common import io, embeddings, evaluate
+from ..m4 import cluster_stats
+from . import ltr
 
 logger = logging.getLogger(__name__)
 

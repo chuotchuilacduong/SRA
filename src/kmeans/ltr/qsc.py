@@ -17,8 +17,8 @@ from __future__ import annotations
 import numpy as np
 from sklearn.cluster import KMeans
 
-from .rrf_pool import minmax
-from .scorer import _stable_order
+from ..m4.rrf_pool import minmax
+from ..m4.scorer import _stable_order
 
 
 def local_k(n: int, default_k: int) -> int:

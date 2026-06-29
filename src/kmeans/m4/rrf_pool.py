@@ -24,9 +24,9 @@ import logging
 
 import numpy as np
 
-from .config import M4V2Config
-from .io import Artifacts
-from . import io
+from ..common.config import M4V2Config
+from ..common.io import Artifacts
+from ..common import io
 
 logger = logging.getLogger(__name__)
 

@@ -10,6 +10,8 @@ Usage:
 
 import argparse
 
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).parent.parent))
 import _bootstrap  # noqa: F401
 
 _bootstrap.setup_logging()

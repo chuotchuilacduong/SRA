@@ -18,8 +18,8 @@ import time
 
 import numpy as np
 
-from .config import M4V2Config, Variant
-from .io import Artifacts
+from ..common.config import M4V2Config, Variant
+from ..common.io import Artifacts
 from .rrf_pool import minmax
 from .soft_cluster import SoftClusterIndex
 from .prf import refine_query

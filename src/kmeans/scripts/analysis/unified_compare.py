@@ -20,6 +20,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).parent.parent))
 import _bootstrap  # noqa: F401
 from sragents.config import PROJECT_ROOT
 from kmeans.qsc_ltr_runner import load_ext

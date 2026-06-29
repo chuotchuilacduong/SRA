@@ -15,10 +15,11 @@ import time
 
 import numpy as np
 
-from .config import M4V2Config
-from .io import Artifacts
+from ..common.config import M4V2Config
+from ..common.io import Artifacts
 from .soft_cluster import SoftClusterIndex
-from . import io, embeddings, rrf_pool, cluster_stats, scorer, evaluate
+from ..common import io, embeddings, evaluate
+from . import rrf_pool, cluster_stats, scorer
 
 logger = logging.getLogger(__name__)
 

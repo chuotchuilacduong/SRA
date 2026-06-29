@@ -21,13 +21,16 @@ import argparse
 import json
 from pathlib import Path
 
+import sys as _sys, pathlib as _pl
+_sys.path.insert(0, str(_pl.Path(__file__).parent.parent))
 import _bootstrap  # noqa: F401
 _bootstrap.setup_logging()
 
 import numpy as np                                       # noqa: E402
 from sragents.config import PROJECT_ROOT                 # noqa: E402
 from kmeans.qsc_ltr_runner import load_ext               # noqa: E402
-from kmeans import cv, ltr, ltr_features, evaluate        # noqa: E402
+from kmeans import cv, ltr_features, evaluate            # noqa: E402
+from kmeans.ltr import ltr                                # noqa: E402
 
 COMP = PROJECT_ROOT / "results" / "comparisons"
 RETR = PROJECT_ROOT / "results" / "retrieval"

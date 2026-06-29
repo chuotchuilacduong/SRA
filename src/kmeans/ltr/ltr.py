@@ -18,8 +18,8 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 
 import numpy as np
 
-from .config import M4V2Config
-from .evaluate import eval_records
+from ..common.config import M4V2Config
+from ..common.evaluate import eval_records
 from .ltr_features import column_indices
 
 logger = logging.getLogger(__name__)

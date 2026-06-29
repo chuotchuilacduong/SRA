@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .config import M4V2Config
+from ..common.config import M4V2Config
 
 
 def rrf_confidence(cfg: M4V2Config, rrf_score: np.ndarray, rrf_norm: np.ndarray) -> float:

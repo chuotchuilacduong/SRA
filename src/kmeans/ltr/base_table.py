@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import numpy as np
 
-from .config import M4V2Config
-from .io import Artifacts, load_instances
-from .rrf_pool import minmax, pool_for_variant
-from .soft_cluster import SoftClusterIndex
-from .prf import refine_query
-from . import io
+from ..common.config import M4V2Config
+from ..common.io import Artifacts, load_instances
+from ..m4.rrf_pool import minmax, pool_for_variant
+from ..m4.soft_cluster import SoftClusterIndex
+from ..m4.prf import refine_query
+from ..common import io
 
 
 def load_cluster_arrays(cfg: M4V2Config) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

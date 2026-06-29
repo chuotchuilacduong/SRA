@@ -20,9 +20,9 @@ from pathlib import Path
 
 from sragents.config import PROJECT_ROOT
 
-from .config import M4V2Config
-from . import io
-from .evaluate import REPORT_METRICS
+from ..common.config import M4V2Config
+from ..common import io
+from ..common.evaluate import REPORT_METRICS
 
 logger = logging.getLogger(__name__)
 

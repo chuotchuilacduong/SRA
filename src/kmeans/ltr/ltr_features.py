@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from . import io
+from ..common import io
 from .qsc import qsc_features, LocalClustering
 
 # Per-candidate features sourced from base_table["arrays"].
