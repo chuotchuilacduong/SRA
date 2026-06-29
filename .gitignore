@@ -56,3 +56,45 @@ slurm-*.out
 *.safetensors
 *.ckpt
 docs/
+
+# ------ 29/06 ----
+# Data and results (data/ & results/ are SYMLINKS — no trailing slash, else they won't match)
+/data
+/results
+exp00/
+
+# Docs
+new_docs/
+newdocs/
+docs/
+plans/
+
+# SLURM outputs and logs
+*.sbatch
+*.out
+*.err
+*.log
+
+# Shell scripts (if you only track source code)
+*.sh
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Environment
+.venv/
+venv/
+env/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
