@@ -11,7 +11,14 @@ LLM rerank in :mod:`sragents.retrieve.llm_rerank`.
 """
 
 # Trigger registration of built-in retrievers.
-from sragents.retrieve import bm25, tfidf, dense, linearrag  # noqa: F401
+from sragents.retrieve import bm25, tfidf, dense  # noqa: F401
+# linearrag is optional: it pulls spacy→thinc, which hits the numpy-2 ABI break
+# in the `sra` env. It is unused by the kmeans/CE-Raw pipelines, so make it
+# best-effort (keep this guard or the kmeans scripts re-break on import).
+try:
+    from sragents.retrieve import linearrag  # noqa: F401
+except Exception:
+    pass
 from sragents.retrieve.base import (
     Retriever,
     get,

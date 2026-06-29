@@ -35,6 +35,16 @@ _QSC_FEATS = [
     "qsc_local_centrality", "qsc_local_cluster_id", "qsc_local_cluster_size",
     "qsc_local_cluster_rank_by_prior", "qsc_local_cluster_rank_by_affinity",
 ]
+# bge_ft (fine-tuned retriever sr-emb-bge-v1) signal. NOT produced by the base-table
+# build (needs the model's corpus/query embeddings) — added post-hoc by
+# scripts/add_bgeft_features.py into a SEPARATE cache (ltr_features_bgeft/). Kept as a
+# distinct group appended LAST in ALL_FEATURES so existing 45-col caches and every prior
+# column_indices() selection stay valid; selecting groups WITHOUT "bge_ft" reproduces
+# the baseline L6 exactly.
+_BGEFT_FEATS = [
+    "bgeft_cosine", "bgeft_rank", "bgeft_inv_rank", "bgeft_rank_norm",
+    "bgeft_is_top1", "bgeft_margin_top1", "bgeft_z",
+]
 
 FEATURE_GROUPS: dict[str, list[str]] = {
     "retrieval": ["rrf_score", "rrf_norm", "rrf_rank", "bm25_score", "bm25_norm",
@@ -49,8 +59,9 @@ FEATURE_GROUPS: dict[str, list[str]] = {
     "confidence": ["rrf_margin_1_10", "rrf_margin_1_5", "bm25_bge_top10_overlap",
                    "bm25_bge_top20_overlap", "bm25_bge_top50_overlap",
                    "query_cluster_entropy_global", "query_length_tokens"],
+    "bge_ft": list(_BGEFT_FEATS),
 }
-ALL_FEATURES = [f for g in ["retrieval", "m4", "a7", "qsc", "confidence"]
+ALL_FEATURES = [f for g in ["retrieval", "m4", "a7", "qsc", "confidence", "bge_ft"]
                 for f in FEATURE_GROUPS[g]]
 
 
@@ -67,6 +78,10 @@ def feature_row(e: dict, local: LocalClustering) -> tuple[np.ndarray, np.ndarray
             cols.append(qf[name])
         elif name in _QUERY_FEATS:
             cols.append(np.full(n, qfeats[name], dtype=np.float32))
+        elif name in _BGEFT_FEATS:
+            # placeholder: real values are filled by scripts/add_bgeft_features.py,
+            # which needs the sr-emb-bge-v1 embeddings (not available at base-build time).
+            cols.append(np.zeros(n, dtype=np.float32))
         else:
             cols.append(np.asarray(arrays[name], dtype=np.float32))
     X = np.stack(cols, axis=1).astype(np.float32)
