@@ -98,3 +98,7 @@ env/
 *.swp
 *.swo
 *~
+src/sragents/probehyrr_h100/*.py
+
+# Scratch docs
+/implementation.md
